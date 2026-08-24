@@ -556,3 +556,39 @@ valid for webhook tests.
     description. Those are expected responses, not retryable errors.
   - Unsigned requests DO reach the webhook endpoint. Signature verification
     is the only defence against forged payment events.
+
+## 2026-08-24 End of reconnaissance. State and next steps.
+
+### Done
+Gateway logic complete and tested: Razorpay client, idempotency store,
+guardrails, hash-chained audit log, recovery state machine. Postgres
+migration verified against a live database including the append-only
+triggers. Browser and API surfaces fully characterised from live runs.
+Webhooks verified end to end over a stable zrok tunnel.
+
+### Known-incomplete, do not mistake for finished
+`src/browser/` was written against an earlier version of CHECKOUT-FLOW.md
+and still carries the outcome-detection and payment-id bugs. It is
+committed as a checkpoint, not a release. Rebuilding it is the next
+substantial task.
+
+### Next four sessions, in order (each depends on the previous)
+1. Throttle rework: per-endpoint, honour Retry-After, do not throttle reads.
+2. Browser rebuild against CHECKOUT-FLOW.md as specification, plus fixtures
+   that model the frame boundary, popup URL sequence, transient heading
+   text, and frame detachment.
+3. Webhook handler in src/webhooks/, and update decline-taxonomy.json to
+   THREE observed classes.
+4. Reconciliation (stale pending via API fetch, attempts via
+   /orders/<id>/payments, cross-check order.attempts) and the contract test.
+
+Then the Python engine: synthetic generator, randomised holdout, bootstrap
+CI, calibration check. That is the part carrying the project's argument and
+none of it exists yet.
+
+### Standing lesson from this phase
+Five driver bugs, all found by running a real browser, none by 178 passing
+tests. Two probe-script auto-conclusions were also wrong. Both failures have
+the same shape: a tool that encodes the author's expectation will confirm
+it. Scripts collect evidence; conclusions come from reading raw fields.
+The contract test exists to keep model and reality aligned from here on.

@@ -276,3 +276,43 @@ Ignore the invoice, settlement, fund_account, refund and engage families.
 
 The receiver must log it as `sig=null`. If nothing appears, the tunnel is not
 routing and registering it in Razorpay would silently fail.
+
+## 2026-08-24 Test-account quota: payment links are capped, orders are not
+
+`POST /v1/payment_links` returns, after 30 links have ever been created:
+
+    { "error": { "code": "RATE_LIMIT_EXCEEDED",
+                 "description": "test mode limit of 30 reached for payment_link" } }
+
+Note the code is RATE_LIMIT_EXCEEDED, NOT the BAD_REQUEST_ERROR returned by
+a per-window 429. These are different failures and the client must treat
+them differently: a 429 is retryable after Retry-After, this one is not
+retryable at all and must surface as a hard error.
+
+Confirmed by Razorpay's API reference (Create a Standard Payment Link):
+"In test mode, you can create up to 30 Payment Links per business. If you
+need to create more than 30 Payment Links for testing purposes, contact
+Razorpay Support."
+
+Cancelling does NOT free quota. Verified: cancelled a link in `created`
+state, immediately retried creation, same error. Account state at the cap
+was 22 created, 6 paid, 1 cancelled, 1 expired.
+
+`POST /v1/orders` is NOT subject to this cap. Created successfully while
+payment links were fully exhausted.
+
+### Consequence for the batch primitive
+
+Building Layer 1 on payment links puts a hard ceiling of 30 on the whole
+project. Orders have no such cap, and the checkout flow works identically
+when Checkout is served from a local page against an order (verified
+earlier with scratch/checkout.html).
+
+Preferred shape: orders + a locally served checkout page. Payment links stay
+useful for one-off manual testing but should not be the batch primitive.
+
+A support ticket has been raised to lift the limit; treat that as a
+convenience, not a dependency.
+
+Remaining headroom at time of writing: 21 links still in `created` state,
+each supporting at least 6 attempts.
