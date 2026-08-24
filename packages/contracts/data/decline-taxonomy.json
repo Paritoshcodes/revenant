@@ -1,0 +1,90 @@
+{
+  "source": "Razorpay published error documentation, error-simulation test cards enumerated in scripts/make_links.py. Observed flags come from docs/DECISIONS.md and data/samples/taxonomy.json.",
+  "note": "observed_in_test_mode is data, never inferred at read time. Exactly two reasons reproduce in Razorpay test mode; every other reason exists only in the Layer 2 synthetic population. A figure derived from a reason flagged false can never be labelled OBSERVED.",
+  "reasons": [
+    {
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "grid_cell": "gateway/payment_authorization",
+      "observed_in_test_mode": true,
+      "test_cards": [],
+      "note": "The mock bank Failure button emits this generically and overrides the card's intended simulation. Observed on pay_TTV3xEPvEdUptp, pay_TTUmS0YAwKooHf, pay_TTUjVTdSxWGLLk, pay_TTUggbgnpzW0Kx."
+    },
+    {
+      "error_reason": "international_transaction_not_allowed",
+      "error_source": "business",
+      "error_step": "payment_initiation",
+      "grid_cell": "business/payment_initiation",
+      "observed_in_test_mode": true,
+      "test_cards": ["4111 1111 1111 1111"],
+      "note": "Observed on pay_TTLe97SBwIwQra. The only terminal-class failure that reproduces."
+    },
+    {
+      "error_reason": "gateway_technical_error",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "grid_cell": "gateway/payment_authorization",
+      "observed_in_test_mode": false,
+      "test_cards": ["4100 2800 0002 0007"],
+      "note": "Documented, but collapses to payment_failed in test mode."
+    },
+    {
+      "error_reason": "authentication_failed",
+      "error_source": "gateway",
+      "error_step": "authentication",
+      "grid_cell": "gateway/authentication",
+      "observed_in_test_mode": false,
+      "test_cards": ["4100 2800 0000 0009"]
+    },
+    {
+      "error_reason": "payment_timed_out",
+      "error_source": "bank",
+      "error_step": "payment_authorization",
+      "grid_cell": "bank/payment_authorization",
+      "observed_in_test_mode": false,
+      "test_cards": ["4100 2800 0009 0000"]
+    },
+    {
+      "error_reason": "card_declined",
+      "error_source": "bank",
+      "error_step": "payment_authorization",
+      "grid_cell": "bank/payment_authorization",
+      "observed_in_test_mode": false,
+      "test_cards": ["4100 2800 0006 0003", "4100 2800 0005 0004", "4100 2800 0004 0005"]
+    },
+    {
+      "error_reason": "insufficient_fund",
+      "error_source": "customer",
+      "error_step": "payment_authorization",
+      "grid_cell": "customer/payment_authorization",
+      "observed_in_test_mode": false,
+      "test_cards": ["4100 2800 0008 0001"]
+    },
+    {
+      "error_reason": "payment_cancelled",
+      "error_source": "customer",
+      "error_step": "payment_authorization",
+      "grid_cell": "customer/payment_authorization",
+      "observed_in_test_mode": false,
+      "test_cards": ["4100 2800 0007 0002"]
+    },
+    {
+      "error_reason": "card_disabled_online",
+      "error_source": "customer",
+      "error_step": "payment_authorization",
+      "grid_cell": "customer/payment_authorization",
+      "observed_in_test_mode": false,
+      "test_cards": ["4100 2800 0003 0006"]
+    },
+    {
+      "error_reason": "card_number_invalid",
+      "error_source": "customer",
+      "error_step": "payment_authorization",
+      "grid_cell": "customer/payment_authorization",
+      "observed_in_test_mode": false,
+      "test_cards": ["4100 2800 0001 0008"],
+      "note": "Documented, but reaches the mock bank page and collapses to payment_failed in test mode."
+    }
+  ]
+}

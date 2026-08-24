@@ -1,0 +1,60 @@
+{
+  "source": "docs/ARCHITECTURE.md, section 'The policy grid'",
+  "note": "Canonical source of truth for both TypeScript and Python. The policy switches on (error_source, error_step), never on error_reason strings, so an unseen reason still lands somewhere on the grid. The internal row uses step '*' as a wildcard: lookup tries the exact pair first, then the wildcard.",
+  "rows": [
+    {
+      "grid_cell": "gateway/payment_authorization",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "failure_class": "transient",
+      "action": "retry_with_backoff",
+      "action_label": "retry with backoff",
+      "observable_in_test_mode": true
+    },
+    {
+      "grid_cell": "gateway/authentication",
+      "error_source": "gateway",
+      "error_step": "authentication",
+      "failure_class": "transient",
+      "action": "retry_prompt_alternate",
+      "action_label": "retry, prompt alternate",
+      "observable_in_test_mode": false
+    },
+    {
+      "grid_cell": "bank/payment_authorization",
+      "error_source": "bank",
+      "error_step": "payment_authorization",
+      "failure_class": "soft",
+      "action": "retry_on_timing_window",
+      "action_label": "retry on timing window",
+      "observable_in_test_mode": false
+    },
+    {
+      "grid_cell": "customer/payment_authorization",
+      "error_source": "customer",
+      "error_step": "payment_authorization",
+      "failure_class": "customer",
+      "action": "nudge_no_auto_retry",
+      "action_label": "nudge, do not auto-retry",
+      "observable_in_test_mode": false
+    },
+    {
+      "grid_cell": "business/payment_initiation",
+      "error_source": "business",
+      "error_step": "payment_initiation",
+      "failure_class": "terminal",
+      "action": "never_retry",
+      "action_label": "never retry",
+      "observable_in_test_mode": true
+    },
+    {
+      "grid_cell": "internal/*",
+      "error_source": "internal",
+      "error_step": "*",
+      "failure_class": "transient",
+      "action": "retry_with_backoff",
+      "action_label": "retry with backoff",
+      "observable_in_test_mode": false
+    }
+  ]
+}

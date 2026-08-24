@@ -1,0 +1,31 @@
+{
+  "name": "@revenant/gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Razorpay client, throttle, idempotency store, guardrails, audit chain, Playwright driver",
+  "main": "./dist/src/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/src/index.js",
+    "test": "vitest run",
+    "db:migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "@revenant/contracts": "*",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.6",
+    "@types/pg": "^8.11.10",
+    "playwright": "^1.48.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

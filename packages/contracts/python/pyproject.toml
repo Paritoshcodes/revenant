@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "revenant-contracts"
+version = "0.0.0"
+description = "Shared policy grid, decline taxonomy and types, read from the canonical JSON"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["revenant_contracts*"]

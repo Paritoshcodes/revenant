@@ -1,0 +1,49 @@
+{
+  "id": "pay_TTUB0ZHEqSrFAc",
+  "entity": "payment",
+  "amount": 49900,
+  "amount_captured": null,
+  "currency": "INR",
+  "status": "captured",
+  "order_id": "order_TTTyu3SdEGRs6f",
+  "invoice_id": null,
+  "international": false,
+  "method": "card",
+  "amount_refunded": 0,
+  "refund_status": null,
+  "captured": true,
+  "description": "#TTTcWTyo5HbDMZ",
+  "card_id": "card_TTUB0nt70xMzqQ",
+  "card": {
+    "id": "card_TTUB0nt70xMzqQ",
+    "entity": "card",
+    "name": "Test Customer",
+    "last4": "1007",
+    "network": "Visa",
+    "type": "debit",
+    "issuer": "DCBL",
+    "international": false,
+    "emi": false,
+    "sub_type": "consumer",
+    "token_iin": "410028000"
+  },
+  "bank": null,
+  "wallet": null,
+  "vpa": null,
+  "email": "test@example.com",
+  "contact": "+919000090000",
+  "notes": {
+    "scenario": "success_baseline"
+  },
+  "fee": 1098,
+  "tax": 0,
+  "error_code": null,
+  "error_description": null,
+  "error_source": null,
+  "error_step": null,
+  "error_reason": null,
+  "acquirer_data": {
+    "auth_code": "112693"
+  },
+  "created_at": 1787548047
+}

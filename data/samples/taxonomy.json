@@ -1,0 +1,74 @@
+[
+  {
+    "id": "pay_TTV3xEPvEdUptp",
+    "status": "failed",
+    "method": "card",
+    "error_code": "BAD_REQUEST_ERROR",
+    "error_source": "gateway",
+    "error_step": "payment_authorization",
+    "error_reason": "payment_failed",
+    "auth_code": null,
+    "card_last4": "0001",
+    "issuer": "DCBL"
+  },
+  {
+    "id": "pay_TTUmS0YAwKooHf",
+    "status": "failed",
+    "method": "card",
+    "error_code": "BAD_REQUEST_ERROR",
+    "error_source": "gateway",
+    "error_step": "payment_authorization",
+    "error_reason": "payment_failed",
+    "auth_code": null,
+    "card_last4": "0008",
+    "issuer": "DCBL"
+  },
+  {
+    "id": "pay_TTUjVTdSxWGLLk",
+    "status": "failed",
+    "method": "card",
+    "error_code": "BAD_REQUEST_ERROR",
+    "error_source": "gateway",
+    "error_step": "payment_authorization",
+    "error_reason": "payment_failed",
+    "auth_code": null,
+    "card_last4": "0007",
+    "issuer": "DCBL"
+  },
+  {
+    "id": "pay_TTUggbgnpzW0Kx",
+    "status": "failed",
+    "method": "card",
+    "error_code": "BAD_REQUEST_ERROR",
+    "error_source": "gateway",
+    "error_step": "payment_authorization",
+    "error_reason": "payment_failed",
+    "auth_code": null,
+    "card_last4": "0007",
+    "issuer": "DCBL"
+  },
+  {
+    "id": "pay_TTUB0ZHEqSrFAc",
+    "status": "captured",
+    "method": "card",
+    "error_code": null,
+    "error_source": null,
+    "error_step": null,
+    "error_reason": null,
+    "auth_code": "112693",
+    "card_last4": "1007",
+    "issuer": "DCBL"
+  },
+  {
+    "id": "pay_TTLe97SBwIwQra",
+    "status": "failed",
+    "method": "card",
+    "error_code": "BAD_REQUEST_ERROR",
+    "error_source": "business",
+    "error_step": "payment_initiation",
+    "error_reason": "international_transaction_not_allowed",
+    "auth_code": null,
+    "card_last4": "1111",
+    "issuer": null
+  }
+]

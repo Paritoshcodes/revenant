@@ -1,0 +1,49 @@
+{
+  "id": "pay_TTUjVTdSxWGLLk",
+  "entity": "payment",
+  "amount": 49900,
+  "amount_captured": null,
+  "currency": "INR",
+  "status": "failed",
+  "order_id": "order_TTUfNCNzPryQFB",
+  "invoice_id": null,
+  "international": false,
+  "method": "card",
+  "amount_refunded": 0,
+  "refund_status": null,
+  "captured": false,
+  "description": "#TTTgk9ADOvJ1r0",
+  "card_id": "card_TTUjVi5wMM2bLi",
+  "card": {
+    "id": "card_TTUjVi5wMM2bLi",
+    "entity": "card",
+    "name": "Test Customer",
+    "last4": "0007",
+    "network": "Visa",
+    "type": "debit",
+    "issuer": "DCBL",
+    "international": false,
+    "emi": false,
+    "sub_type": "consumer",
+    "token_iin": "410028000"
+  },
+  "bank": null,
+  "wallet": null,
+  "vpa": null,
+  "email": "test@example.com",
+  "contact": "+919000090000",
+  "notes": {
+    "scenario": "gateway_technical_error"
+  },
+  "fee": null,
+  "tax": null,
+  "error_code": "BAD_REQUEST_ERROR",
+  "error_description": "Payment failed",
+  "error_source": "gateway",
+  "error_step": "payment_authorization",
+  "error_reason": "payment_failed",
+  "acquirer_data": {
+    "auth_code": null
+  },
+  "created_at": 1787550007
+}
