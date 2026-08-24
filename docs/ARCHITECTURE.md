@@ -75,7 +75,6 @@ The LLM never decides whether money moves.
     max 3 attempts per transaction
     terminal grid rows never retried
     exponential backoff between attempts
-    per-transaction attempt cap
     global circuit breaker on batch error rate
     outbound throttle honouring the observed 429 limit
 
@@ -115,7 +114,7 @@ Postgres. Five tables. Do not add more without logging it in DECISIONS.md.
       error_step          text
       error_reason        text
       auth_code           text
-      outcome             text                  captured | failed | blocked
+      outcome             text                  pending | captured | failed | blocked
       created_at          timestamptz
 
     decisions
@@ -147,6 +146,13 @@ Postgres. Five tables. Do not add more without logging it in DECISIONS.md.
 
 `idempotency_key` unique constraint is the enforcement point. Check it before
 any outbound Razorpay write, never after.
+
+`attempts.outcome = pending` means reserved but unresolved: the row was
+written before the outbound call and no result has come back yet. It is not
+`blocked`, which means a guardrail refused the action.
+
+A `pending` attempt older than the reconciliation threshold is resolved by
+fetching the payment from Razorpay, never by assuming it failed.
 
 `audit_log.hash` = sha256(prev_hash + canonical_json(payload)). Genesis row
 has prev_hash = 64 zeros.

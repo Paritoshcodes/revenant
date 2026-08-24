@@ -38,7 +38,14 @@ export type Arm = 'control' | 'treatment';
 
 export type TransactionStatus = 'open' | 'recovered' | 'abandoned' | 'terminal';
 
-export type AttemptOutcome = 'captured' | 'failed' | 'blocked';
+/**
+ * `pending` is a reserved attempt: the idempotency row exists but the
+ * outbound Razorpay write has not settled yet. See migration 0002.
+ */
+export type AttemptOutcome = 'pending' | 'captured' | 'failed' | 'blocked';
+
+/** The outcomes an attempt can settle into. `pending` is not one of them. */
+export type SettledOutcome = Exclude<AttemptOutcome, 'pending'>;
 
 export type GuardrailVerdict = 'allow' | 'veto';
 

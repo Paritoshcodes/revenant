@@ -2,7 +2,17 @@
  * Environment parsing. Fails loudly at boot rather than at the first
  * outbound call, so a missing key is never discovered mid-batch.
  */
-import 'dotenv/config';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { config as loadEnv } from 'dotenv';
+
+// .env lives at the repo root, but npm runs workspace scripts with cwd set to
+// the workspace directory, so bare `dotenv/config` looks in apps/gateway and
+// silently finds nothing. Resolve from this file instead. See DECISIONS.md.
+// src/ -> apps/gateway/ -> apps/ -> repo root
+const here = dirname(fileURLToPath(import.meta.url));
+loadEnv({ path: join(here, '..', '..', '..', '.env') });
 
 const required = (name: string): string => {
   const value = process.env[name];

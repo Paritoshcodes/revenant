@@ -21,7 +21,8 @@ RecoveryAction = Literal[
 ]
 Arm = Literal["control", "treatment"]
 TransactionStatus = Literal["open", "recovered", "abandoned", "terminal"]
-AttemptOutcome = Literal["captured", "failed", "blocked"]
+AttemptOutcome = Literal["pending", "captured", "failed", "blocked"]
+SettledOutcome = Literal["captured", "failed", "blocked"]
 GuardrailVerdict = Literal["allow", "veto"]
 
 EvidenceLayer = Literal["layer1_observed", "layer2_estimated", "layer3_ope"]

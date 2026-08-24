@@ -16,6 +16,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 // .env lives at the repo root; npm runs this with cwd = apps/gateway.
 loadEnv({ path: join(here, '..', '..', '..', '.env') });
 
+// psql is often not on PATH on Windows: the installer puts it under
+// "C:/Program Files/PostgreSQL/<version>/bin". PSQL_BIN overrides the lookup.
+const psqlBin = process.env.PSQL_BIN ?? 'psql';
+
 const migrationsDir = join(here, '..', 'migrations');
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -31,12 +35,18 @@ const files = readdirSync(migrationsDir)
 for (const file of files) {
   console.log(`applying ${file}`);
   const result = spawnSync(
-    'psql',
+    psqlBin,
     [databaseUrl, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(migrationsDir, file)],
     { stdio: 'inherit' },
   );
   if (result.error) {
-    console.error(`psql not found on PATH: ${result.error.message}`);
+    console.error(
+      [
+        `could not run '${psqlBin}': ${result.error.message}`,
+        'Set PSQL_BIN to the full path of psql, for example:',
+        '  PSQL_BIN="C:/Program Files/PostgreSQL/18/bin/psql.exe" npm run db:migrate',
+      ].join('\n'),
+    );
     process.exit(1);
   }
   if (result.status !== 0) {

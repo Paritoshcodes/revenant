@@ -22,6 +22,7 @@ from .types import (
     GuardrailVerdict,
     PolicyGridRow,
     RecoveryAction,
+    SettledOutcome,
     TransactionStatus,
 )
 
@@ -38,6 +39,7 @@ __all__ = [
     "GuardrailVerdict",
     "PolicyGridRow",
     "RecoveryAction",
+    "SettledOutcome",
     "TransactionStatus",
     "decline_taxonomy",
     "grid_cell",
