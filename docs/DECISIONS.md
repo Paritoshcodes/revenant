@@ -296,3 +296,48 @@ directly (INSERT then UPDATE, expect rejection) inside its own rolled-back
 transaction, so the property the whole design depends on is asserted here
 too, not only recorded as a manual finding.
 
+
+## Build log: design errors caught by tests, not by review
+
+Keep this list current. It is Build Quality evidence for the README and the
+pitch: the tests caught logic errors that would have moved money
+incorrectly, which is a stronger claim than a passing badge.
+
+**1. Token bucket admitted more writes than the observed rate limit.**
+The first throttle was a token bucket (capacity 4, one token per 10s). Its
+own test failed: the bucket refills while the burst drains, so 7 writes
+landed inside a 40s window against an observed limit near 5. The flaw is
+general, a bucket admits `capacity + window/refill` in any window. Replaced
+with an explicit sliding window (4 writes per 40s, 4s minimum spacing).
+Consequence had it shipped: rate-limit failures mid-batch.
+
+**2. "Guardrail allowed" did not mean "make an attempt".**
+The `terminal_grid_cell` guardrail only vetoes when the proposed action is
+itself a retry. When the policy correctly proposes `never_retry` on a
+terminal cell there is nothing to refuse, so the guardrail allows it. The
+state machine had assumed allowed implies attempt, so it would have fired an
+outbound Razorpay call on exactly the transactions that must never be
+retried, slipping underneath the layer built to prevent that. Fixed by
+deriving closure from the action itself (`requiresAttempt`) rather than from
+the absence of a veto.
+
+**3. `Promise.race` on the two outcome probes would reject spuriously.**
+Outcome detection races `div.Payment-Completed` against
+`[data-testid="retry-surface"]`. A real `Promise.race` rejects as soon as
+the losing selector times out, even though the winning one had already
+resolved correctly. Replaced with non-rejecting probes.
+
+## 2026-08-24 Playwright driver notes
+
+- `PageLike` / `LocatorLike` structural interfaces rather than importing the
+  `playwright` types, matching the existing `Queryable` pattern, so the flow
+  logic is unit-testable with plain fakes.
+- The popup listener is registered BEFORE the submit click that triggers it.
+  Registering after is a race. Asserted by a call-order test.
+- The DOM only distinguishes captured from failed. The richer taxonomy
+  fields (`error_source`, `error_step`, `auth_code`) belong to the Razorpay
+  payment record and are fetched from the API, never inferred from the page.
+  Left null in the browser layer rather than guessed.
+- `CheckoutSessionProvider` seam: `execute()` receives no link URL, card
+  number or target outcome, because choosing those is a batch-orchestration
+  decision, not a browser-automation one.
