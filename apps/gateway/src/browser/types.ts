@@ -6,10 +6,21 @@ import type { RecoveryAction, Result } from '@revenant/contracts';
 /** The slice of Playwright's Locator this module depends on. */
 export interface LocatorLike {
   click(options?: { readonly timeout?: number }): Promise<void>;
+  fill(value: string, options?: { readonly timeout?: number }): Promise<void>;
   waitFor(options?: {
     readonly state?: 'visible' | 'attached';
     readonly timeout?: number;
   }): Promise<void>;
+}
+
+/**
+ * The slice of Playwright's FrameLocator this module depends on. Every
+ * checkout element lives inside iframe.razorpay-checkout-frame
+ * (docs/CHECKOUT-FLOW.md, CORRECTION), never on the top-level page, so all
+ * form-filling and element waiting goes through here.
+ */
+export interface FrameLocatorLike {
+  locator(selector: string): LocatorLike;
 }
 
 /**
@@ -18,28 +29,33 @@ export interface LocatorLike {
  * imports the playwright package: the flow logic stays unit-testable with
  * a plain fake, matching how the rest of the gateway fakes Queryable
  * rather than importing pg types.
+ *
+ * Only page-level concerns stay here: navigation, obtaining the frame,
+ * the popup event, waiting for the popup's URL to change, and
+ * screenshots — plus `click`, because the mock bank popup's
+ * Success/Failure buttons live directly on that page's top-level
+ * document, not inside a frame.
  */
 export interface PageLike {
-  goto(url: string, options?: { readonly timeout?: number }): Promise<unknown>;
-  fill(
-    selector: string,
-    value: string,
-    options?: { readonly timeout?: number },
-  ): Promise<void>;
+  goto(
+    url: string,
+    options?: {
+      readonly timeout?: number;
+      readonly waitUntil?: 'domcontentloaded';
+    },
+  ): Promise<unknown>;
+  frameLocator(selector: string): FrameLocatorLike;
   click(selector: string, options?: { readonly timeout?: number }): Promise<void>;
-  locator(selector: string): LocatorLike;
   waitForEvent(
     event: 'popup',
     options?: { readonly timeout?: number },
   ): Promise<PageLike>;
-  waitForSelector(
-    selector: string,
-    options?: { readonly timeout?: number },
-  ): Promise<unknown>;
-  waitForLoadState(
-    state?: 'load' | 'domcontentloaded' | 'networkidle',
-    options?: { readonly timeout?: number },
-  ): Promise<void>;
+  /**
+   * The popup opens on an intermediate checkout URL before navigating to
+   * the mocksharp bank page; this is how the driver waits for that
+   * navigation rather than the popup's initial load.
+   */
+  waitForURL(url: string, options?: { readonly timeout?: number }): Promise<void>;
   screenshot(options?: { readonly path?: string }): Promise<unknown>;
 }
 

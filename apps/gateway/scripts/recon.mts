@@ -136,7 +136,24 @@ await probe(popup, '07_popup_bank_page');
 const bankButton = process.argv[3] === 'S' ? 'S' : 'F';
 console.log(`\n  clicking bank button data-val="${bankButton}"`);
 await popup.click(`button[data-val="${bankButton}"]`);
-await page.waitForTimeout(6000);
+// Probe repeatedly: outcome markers may pass through a transient state.
+const t0 = Date.now();
+for (const ms of [400, 800, 1500, 3000, 6000, 10000]) {
+  const wait = ms - (Date.now() - t0);
+  if (wait > 0) await page.waitForTimeout(wait);
+  const snap = (await frame().evaluate(`(() => {
+    const g = (s) => document.querySelector(s);
+    const txt = (s) => { const e = g(s); return e ? e.textContent.trim().slice(0,60) : null; };
+    return {
+      heading: txt('[data-testid="payment-status-heading"]'),
+      retrySurface: !!g('[data-testid="retry-surface"]'),
+      retryDesc: txt('[data-testid="retry-description"]'),
+      modal: !!g('[data-testid="payment-status-modal"]'),
+    };
+  })()`)) as any;
+  console.log(`  t+${ms}ms  heading=${JSON.stringify(snap.heading)}  retry=${snap.retrySurface}  desc=${JSON.stringify(snap.retryDesc)}`);
+  steps.push({ step: `timeline_${ms}ms`, ...snap });
+}
 
 await probe(page, '08_parent_after_outcome');
 await probe(frame(), '09_frame_after_outcome');

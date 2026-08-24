@@ -1,14 +1,29 @@
 /**
  * Drives the Razorpay test-mode checkout flow documented in
- * docs/CHECKOUT-FLOW.md.
+ * docs/CHECKOUT-FLOW.md, corrected 2026-08-24 against live runs
+ * (CORRECTION and VERIFIED sections):
  *
- * Two functions: `openCheckout` covers steps 1-2 (navigate, fill contact),
- * done once per transaction. `attempt` covers steps 3-10 (select card,
- * submit, the mock bank popup, outcome detection) and is reusable for both
- * the first attempt and every retry, since the retry surface re-exposes
- * the same entry point, [data-testid="card"] — `page` must already be
- * positioned there, either just after openCheckout or on the retry
- * surface from a prior failed attempt.
+ *   - Every element from the contact field onward lives inside
+ *     iframe.razorpay-checkout-frame, not the top-level page. The parent
+ *     page has zero data-testid elements and zero inputs.
+ *   - The mock bank popup opens on an intermediate
+ *     api.razorpay.com/v1/checkout/public URL with no buttons, and only
+ *     later navigates to the mocksharp bank page. The driver must
+ *     `waitForURL` that navigation before the bank button is clickable.
+ *   - `div.Payment-Completed` does not exist anywhere. The real markers,
+ *     both inside the frame, are [data-testid="payment-status-heading"]
+ *     (success) and [data-testid="retry-surface"] (failure).
+ *   - The payment method list does not exist until contact is filled, and
+ *     the card fields do not exist until the card method is selected.
+ *
+ * Two functions: `openCheckout` covers steps 1-2 (navigate, fill contact,
+ * wait for the method list to unlock), done once per transaction.
+ * `attempt` covers steps 3-10 (select card, submit, the mock bank popup,
+ * outcome detection) and is reusable for both the first attempt and every
+ * retry, since the retry surface re-exposes the same entry point,
+ * [data-testid="card"] — `page` must already be positioned there, either
+ * just after openCheckout or on the retry surface from a prior failed
+ * attempt.
  *
  * Nothing here throws. A Playwright error, an unexpected page state, or a
  * timeout all become a typed Failure, with a screenshot taken alongside
@@ -18,8 +33,13 @@
 import { err, ok } from '@revenant/contracts';
 import type { Failure, Result } from '@revenant/contracts';
 
-import { SELECTORS } from './selectors.js';
-import type { AttemptFlowOptions, AttemptFlowResult, PageLike } from './types.js';
+import { FRAME_SELECTOR, MOCKSHARP_URL_PATTERN, SELECTORS } from './selectors.js';
+import type {
+  AttemptFlowOptions,
+  AttemptFlowResult,
+  FrameLocatorLike,
+  PageLike,
+} from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_SAVE_CARD_GUARD_MS = 5_000;
@@ -48,7 +68,9 @@ const screenshot = async (
   }
 };
 
-/** Steps 1-2: open the payment link and fill the contact field. */
+const checkoutFrame = (page: PageLike): FrameLocatorLike => page.frameLocator(FRAME_SELECTOR);
+
+/** Steps 1-2: open the payment link, fill contact, and wait for the method list to unlock. */
 export const openCheckout = async (
   page: PageLike,
   shortUrl: string,
@@ -58,8 +80,18 @@ export const openCheckout = async (
   const contact = options.contact ?? DEFAULT_CONTACT;
 
   try {
-    await page.goto(shortUrl, { timeout });
-    await page.fill(SELECTORS.contact, contact, { timeout });
+    // Razorpay checkout polls continuously, so the network never goes
+    // idle: 'networkidle' would time out after 30s. domcontentloaded is
+    // what actually resolves.
+    await page.goto(shortUrl, { timeout, waitUntil: 'domcontentloaded' });
+
+    const frame = checkoutFrame(page);
+    await frame.locator(SELECTORS.contact).fill(contact, { timeout });
+
+    // The payment method list, including [data-testid="card"], does not
+    // exist until contact is filled. Wait for it rather than assuming it.
+    await frame.locator(SELECTORS.cardMethod).waitFor({ state: 'visible', timeout });
+
     return ok(undefined);
   } catch (cause) {
     await screenshot(page, options.screenshotDir, 'open-checkout-failed');
@@ -69,21 +101,23 @@ export const openCheckout = async (
 
 /**
  * Waits, in parallel, up to `timeout` for either DOM outcome marker to
- * appear. Two independently-awaited, non-rejecting probes rather than
- * Promise.race on the raw waitForSelector calls: a race settles (and
- * rejects) on whichever marker times out first, even when the other one
- * resolves moments later.
+ * appear in the checkout frame. Two independently-awaited, non-rejecting
+ * probes rather than Promise.race on the raw waitFor calls: a race
+ * settles (and rejects) on whichever marker times out first, even when
+ * the other one resolves moments later.
  */
 const waitForDomOutcome = async (
-  page: PageLike,
+  frame: FrameLocatorLike,
   timeout: number,
 ): Promise<'captured' | 'failed' | null> => {
-  const success = page
-    .waitForSelector(SELECTORS.completed, { timeout })
+  const success = frame
+    .locator(SELECTORS.paymentStatusHeading)
+    .waitFor({ state: 'visible', timeout })
     .then(() => 'captured' as const)
     .catch(() => null);
-  const failure = page
-    .waitForSelector(SELECTORS.retrySurface, { timeout })
+  const failure = frame
+    .locator(SELECTORS.retrySurface)
+    .waitFor({ state: 'visible', timeout })
     .then(() => 'failed' as const)
     .catch(() => null);
   const [succeeded, failed] = await Promise.all([success, failure]);
@@ -92,8 +126,8 @@ const waitForDomOutcome = async (
 
 /**
  * Steps 3-10: select the card instrument, submit, drive the mock bank
- * popup down the given outcome, and read the result back off the parent
- * page.
+ * popup down the given outcome, and read the result back off the checkout
+ * frame.
  */
 export const attempt = async (
   page: PageLike,
@@ -105,24 +139,30 @@ export const attempt = async (
   const saveCardGuardMs = options.saveCardGuardMs ?? DEFAULT_SAVE_CARD_GUARD_MS;
   const expiry = options.expiry ?? DEFAULT_EXPIRY;
   const cvv = options.cvv ?? DEFAULT_CVV;
+  const frame = checkoutFrame(page);
 
   try {
-    // Steps 3-6: select the card instrument and fill its fields.
-    await page.click(SELECTORS.cardMethod, { timeout });
-    await page.fill(SELECTORS.cardNumber, cardNumber, { timeout });
-    await page.fill(SELECTORS.cardExpiry, expiry, { timeout });
-    await page.fill(SELECTORS.cardCvv, cvv, { timeout });
+    // Step 3: select the card instrument.
+    await frame.locator(SELECTORS.cardMethod).click({ timeout });
+
+    // The card fields do not exist until the card method is selected.
+    await frame.locator(SELECTORS.cardNumber).waitFor({ state: 'visible', timeout });
+
+    // Steps 4-6.
+    await frame.locator(SELECTORS.cardNumber).fill(cardNumber, { timeout });
+    await frame.locator(SELECTORS.cardExpiry).fill(expiry, { timeout });
+    await frame.locator(SELECTORS.cardCvv).fill(cvv, { timeout });
 
     // Registered before the click that can trigger it: waitForEvent must
     // start listening before the popup opens, or the event can be missed.
     const popupPromise = page.waitForEvent('popup', { timeout });
 
     // Step 7: submit.
-    await page.click(SELECTORS.submit, { timeout });
+    await frame.locator(SELECTORS.submit).click({ timeout });
 
     // Step 8: the save-card prompt is conditional. Guard it rather than
     // assume it appears.
-    const saveCardButton = page.locator(SELECTORS.declineSaveCard);
+    const saveCardButton = frame.locator(SELECTORS.declineSaveCard);
     const saveCardPromptAppeared = await saveCardButton
       .waitFor({ state: 'visible', timeout: saveCardGuardMs })
       .then(() => true)
@@ -131,22 +171,26 @@ export const attempt = async (
       await saveCardButton.click({ timeout });
     }
 
-    // Step 9: a NEW BROWSER WINDOW, not a same-tab navigation.
+    // Step 9: a NEW BROWSER WINDOW, not a same-tab navigation. It opens on
+    // an intermediate checkout URL with no buttons and navigates to the
+    // mocksharp bank page afterwards — clicking the bank button before
+    // that navigation only works by timing luck.
     const popup = await popupPromise;
-    await popup.waitForLoadState('domcontentloaded', { timeout });
+    await popup.waitForURL(MOCKSHARP_URL_PATTERN, { timeout });
     await popup.click(
       outcome === 'success' ? SELECTORS.bankSuccess : SELECTORS.bankFailure,
       { timeout },
     );
 
-    // Step 10: the popup closes itself; outcome is read from the parent.
-    const domOutcome = await waitForDomOutcome(page, timeout);
+    // Step 10: the popup closes itself; outcome is read from the checkout
+    // frame, not the parent page. div.Payment-Completed does not exist.
+    const domOutcome = await waitForDomOutcome(frame, timeout);
     if (domOutcome === null) {
       await screenshot(page, options.screenshotDir, 'attempt-no-outcome-marker');
       return err<Failure>({
         kind: 'upstream',
         message:
-          'checkout flow finished without a Payment-Completed or retry-surface marker appearing',
+          'checkout flow finished without a payment-status-heading or retry-surface marker appearing',
       });
     }
 

@@ -4,54 +4,22 @@ import { err, ok } from '@revenant/contracts';
 import type { Failure, Result } from '@revenant/contracts';
 
 import { createPlaywrightAttemptExecutor } from '../src/browser/executor.js';
-import { SELECTORS } from '../src/browser/selectors.js';
-import type { CheckoutSession, CheckoutSessionProvider, PageLike } from '../src/browser/types.js';
+import type { CheckoutSession, CheckoutSessionProvider } from '../src/browser/types.js';
+import { createCheckoutFixture } from './support/checkout-fixture.js';
 
-/** A page that reaches the given DOM outcome with no other surprises. */
-const passthroughPage = (domOutcome: 'captured' | 'failed'): PageLike => {
-  const popupPage: PageLike = {
-    goto: () => Promise.reject(new Error('unused')),
-    fill: () => Promise.reject(new Error('unused')),
-    click: async () => {},
-    locator: () => {
-      throw new Error('unused');
-    },
-    waitForEvent: () => Promise.reject(new Error('unused')),
-    waitForSelector: () => Promise.reject(new Error('unused')),
-    waitForLoadState: async () => {},
-    screenshot: async () => {},
-  };
-
-  return {
-    goto: async () => {},
-    fill: async () => {},
-    click: async () => {},
-    locator: () => ({
-      // No save-card prompt in this fixture.
-      waitFor: () => Promise.reject(new Error('no save-card prompt')),
-      click: async () => {},
-    }),
-    waitForEvent: async () => popupPage,
-    waitForSelector: async (selector) => {
-      if (selector === SELECTORS.completed && domOutcome === 'captured') return undefined;
-      if (selector === SELECTORS.retrySurface && domOutcome === 'failed') return undefined;
-      throw new Error('timeout');
-    },
-    waitForLoadState: async () => {},
-    screenshot: async () => {},
-  };
-};
-
-const captureSession: CheckoutSession = {
-  page: passthroughPage('captured'),
-  cardNumber: '4111111111111111',
-  outcome: 'success',
+const openedSession = (
+  outcome: 'success' | 'failure',
+  cardNumber = '4111111111111111',
+): CheckoutSession => {
+  const { page, world } = createCheckoutFixture();
+  world.stage = 'contactFilled'; // as if openCheckout already ran
+  return { page, cardNumber, outcome };
 };
 
 describe('createPlaywrightAttemptExecutor', () => {
-  it('resolves a session, drives it, and reports a captured attempt with no taxonomy guessed', async () => {
+  it('resolves a session, drives it through the real frame/popup flow, and reports captured', async () => {
     const sessions: CheckoutSessionProvider = {
-      prepare: async () => ok(captureSession),
+      prepare: async () => ok(openedSession('success')),
     };
     const executor = createPlaywrightAttemptExecutor({ sessions });
 
@@ -79,12 +47,7 @@ describe('createPlaywrightAttemptExecutor', () => {
 
   it('reports a failed attempt when the retry surface appears', async () => {
     const sessions: CheckoutSessionProvider = {
-      prepare: async () =>
-        ok({
-          page: passthroughPage('failed'),
-          cardNumber: '4100280000020007',
-          outcome: 'failure',
-        }),
+      prepare: async () => ok(openedSession('failure', '4100280000020007')),
     };
     const executor = createPlaywrightAttemptExecutor({ sessions });
 
@@ -120,21 +83,11 @@ describe('createPlaywrightAttemptExecutor', () => {
   });
 
   it('propagates a typed failure from the checkout flow itself', async () => {
-    const brokenPage: PageLike = {
-      goto: async () => {},
-      fill: async () => {
-        throw new Error('field not found');
-      },
-      click: async () => {},
-      locator: () => ({ waitFor: async () => {}, click: async () => {} }),
-      waitForEvent: () => Promise.reject(new Error('unused')),
-      waitForSelector: () => Promise.reject(new Error('unused')),
-      waitForLoadState: async () => {},
-      screenshot: async () => {},
-    };
+    // Session handed back at the wrong stage (never contact-filled): the
+    // card method click rejects, exactly as a real premature click would.
+    const { page } = createCheckoutFixture();
     const sessions: CheckoutSessionProvider = {
-      prepare: async () =>
-        ok({ page: brokenPage, cardNumber: '4111111111111111', outcome: 'success' }),
+      prepare: async () => ok({ page, cardNumber: '4111111111111111', outcome: 'success' }),
     };
     const executor = createPlaywrightAttemptExecutor({ sessions });
 
@@ -148,6 +101,6 @@ describe('createPlaywrightAttemptExecutor', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.kind).toBe('upstream');
-    expect(result.error.message).toContain('field not found');
+    expect(result.error.message).toContain('contact has not been filled');
   });
 });

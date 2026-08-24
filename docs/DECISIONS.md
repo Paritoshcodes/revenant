@@ -327,6 +327,25 @@ Outcome detection races `div.Payment-Completed` against
 the losing selector times out, even though the winning one had already
 resolved correctly. Replaced with non-rejecting probes.
 
+**4. Sixteen passing driver tests missed all four DOM bugs.** The first
+`src/browser/` driver queried the top-level page instead of
+`iframe.razorpay-checkout-frame`, waited for popup load instead of the
+mocksharp navigation, keyed success on `div.Payment-Completed` (which does
+not exist anywhere), and assumed the card fields existed before the card
+method was clicked. It shipped with 16 passing unit tests, and every one of
+them passed regardless, because the structural `PageLike`/`LocatorLike`
+fakes answered every query on every document and every URL
+unconditionally — they modelled what the driver assumed, not what the page
+actually does. Code review missed it too. Only a headed run against a real
+browser (docs/CHECKOUT-FLOW.md, CORRECTION and VERIFIED sections) surfaced
+the actual DOM shape. Rebuilt the fakes to enforce the frame boundary
+(`frameLocator` on the wrong selector returns a locator that rejects every
+call), the popup's staged URL (the bank button rejects until `waitForURL`
+resolves the mocksharp navigation), and staged element availability (the
+card fields reject until the card method is clicked, the method list
+rejects until contact is filled), so a regression to any of the four bugs
+now fails the suite instead of only a live run.
+
 ## 2026-08-24 Playwright driver notes
 
 - `PageLike` / `LocatorLike` structural interfaces rather than importing the
@@ -341,3 +360,199 @@ resolved correctly. Replaced with non-rejecting probes.
 - `CheckoutSessionProvider` seam: `execute()` receives no link URL, card
   number or target outcome, because choosing those is a batch-orchestration
   decision, not a browser-automation one.
+
+## 2026-08-24 Full live reconnaissance: CHECKOUT-FLOW.md rewritten
+
+Drove both outcome paths and a complete fail-then-retry sequence in a real
+browser, confirming every outcome against the payments API. CHECKOUT-FLOW.md
+was rewritten from scratch and now supersedes all prior versions.
+
+New facts not previously known, each of which would have caused a bug:
+
+**On success the checkout frame DETACHES.** Polling it across the transition
+throws "Frame was detached". That error is a success signal, not a failure.
+The terminal marker is `div.Payment-Completed` on the PARENT page. An
+earlier correction in this log claimed that element did not exist; it does,
+on the parent, after the frame is torn down.
+
+**The popup's initial URL carries the payment ID**
+(`/v1/payments/<ID>/authenticate`). This is how a browser attempt is
+correlated with its API payment record. Verified twice. Without it the
+driver has no way to know which payment it created, which would have made
+the contract test impossible to write.
+
+**The tokenisation dialog is conditional, not unconditional.** Present on
+attempt 1, absent on the retry in the same session. It is NOT controlled by
+the `save` checkbox, which is unchecked by default while the dialog still
+appears. Guarding it is required, not defensive.
+
+**Card fields retain values across a retry.** Switching instrument on a
+recovery attempt requires clearing them first. `fill()` clears; a native
+setter appends.
+
+**The checkout frame is cross-origin.** `contentDocument` from the parent is
+null. Reachable only via the frame API.
+
+## Build log entry 5: outcome detection reported captured on a failed payment
+
+`payment-status-heading` exists on the failure path for ~5 seconds reading
+"Processing your payment" then "Confirming Payment", clearing at ~6s when
+retry-surface appears. The driver waited on its existence, resolved at
+~400ms, and reported `captured` for a payment the API recorded as `failed`.
+
+Severity: this is the worst bug so far. A driver reporting every attempt as
+recovered makes the recovery figure fiction while the dashboard looks
+healthy. It would have invalidated the one number the project exists to
+produce.
+
+Found by a live smoke run. 178 tests passed.
+
+## The pattern, stated honestly
+
+Five driver bugs. All five found by running a real browser. Zero found by
+the test suite, including the fixture-fidelity block written specifically to
+catch bugs one through four.
+
+This is not a failure of the tests. It is a property of testing against a
+third party: a hand-built fixture encodes what the author already believes,
+so it can only confirm those beliefs. When the belief was wrong the fixture
+was wrong identically, and the suite passed with full confidence.
+
+The logic tests remain load-bearing and caught three genuine design errors
+(see entries 1 to 3). The division is: unit tests guard known behaviour
+against regression; live reconnaissance is the only thing that discovers it.
+
+Mitigation: a contract test that drives one real payment and asserts the
+driver's reported outcome equals the API's recorded status. That is the only
+test that compares our model against reality rather than against itself.
+
+## 2026-08-24 Open questions closed, and a warning about auto-conclusions
+
+All three remaining unknowns resolved (see CHECKOUT-FLOW.md section 10).
+
+- Abandonment creates NO payment record. Detect via payment_link.status.
+- No OTP page exists on this account. OTP-based recovery actions are out.
+- One link supports at least 3 attempts (fail, fail, capture, verified).
+- A paid link does not offer a payable checkout; it renders
+  `.Payment-Completed` on load. Check before attempting.
+- Payment id capture from the popup URL is timing-sensitive and must happen
+  before the mocksharp navigation.
+
+**Warning worth keeping.** The probe script computed its own `conclusion`
+strings and two of four were WRONG:
+
+1. It reported "abandonment DOES create a payment record" because its
+   baseline filter held only one prior payment id, so payments from an
+   earlier session leaked into the "new" list. The link-scoped fields
+   (orderPaymentCount 0, status "created") said the opposite.
+2. It reported "a PAID link still opens checkout" because it keyed on the
+   iframe element existing. The element is a leftover; `.Payment-Completed`
+   was present and the body read "You have successfully paid".
+
+Both would have been believed if the raw fields had not been read. The rule
+this establishes: a probe script may COLLECT evidence, it must never
+CONCLUDE. Conclusions belong in review, against the raw fields. Any script
+that prints a verdict is a script that can lie convincingly.
+
+This is the same failure mode as the test fixtures, one layer up: a tool
+that encodes the author's expectation will confirm it.
+
+## 2026-08-24 Final gap closure: a third taxonomy class, and the pending state
+
+Four remaining uncertainties closed by driving a real browser by hand rather
+than trusting a script. Full detail in CHECKOUT-FLOW.md section 12.
+
+**A THIRD real taxonomy class exists.** A payment abandoned after submit
+resolves to `payment_cancelled | customer | payment_authentication`. The
+observed taxonomy is now three classes, not two:
+
+    payment_failed                        gateway   payment_authorization
+    payment_cancelled                     customer  payment_authentication
+    international_transaction_not_allowed business  payment_initiation
+
+The `customer` row of the policy grid is REAL, not synthetic. It maps to
+"nudge, do not auto-retry". Update the grid's
+`observable_in_test_mode` flags: that row becomes true, and
+decline-taxonomy.json now has THREE entries with
+`observed_in_test_mode: true`, not two. Any test asserting exactly two
+observed reasons must be updated.
+
+**`status: "created"` is the real-world `pending` state.** While the bank
+page sits unanswered the payment is `created` with no error fields, then
+transitions to `failed`/`payment_cancelled` within about a minute of the
+popup closing. This is direct validation of the `pending` schema decision
+and of reconciling stale pending attempts by fetching from Razorpay rather
+than assuming failure.
+
+**Two distinct abandonment cases, and only one is visible at /payments.**
+Abandoning BEFORE submit creates no payment record at all (detect via
+payment_link.status). Abandoning AFTER submit creates one. The earlier note
+in this log saying "abandonment is invisible at /payments" was true only of
+the before-submit case and is hereby narrowed.
+
+**`.Payment-Completed` on the parent must be the primary success signal.**
+The frame heading does reach "Payment Successful", but the window is about
+five seconds and a probe caught it with one second remaining before the
+frame detached. The parent marker is permanent and raceless. Treat the
+heading as an optional early exit only.
+
+Also resolved: the tokenisation dialog is once per session and independent
+of the card (present on attempt 1 with card A, absent on attempt 2 with card
+B). A paid link's iframe exists but is 0x0 with null offsetParent, so its
+presence is not evidence the checkout is usable. The popup has three
+observed intermediate states including an `about:blank` "Processing, Please
+Wait..." page.
+
+**Method note.** These were found by hand, not by the probe script, and two
+of that script's own auto-conclusions had already been shown wrong. The rule
+stands: scripts collect evidence, humans conclude.
+
+## 2026-08-24 API and webhook behaviour verified; THROTTLE MUST CHANGE
+
+Full detail in docs/API-BEHAVIOUR.md. Raw evidence in tmp/api-probe.json and
+tmp/webhook-events.jsonl.
+
+**The sliding-window throttle is wrong and must be reworked.** It was built
+from one observation on /payment_links (~5 writes, ~40s to clear) and applied
+globally. Measured reality:
+
+    GET /payments   25 consecutive reads, zero 429s
+    POST /orders    7 writes ok, 429 on the 8th, Retry-After: 3
+    reads stayed 200 while /orders was limited
+
+So limits are PER ENDPOINT, reads are effectively unthrottled, and Razorpay
+returns a `Retry-After` header that must be honoured. A fixed 40s backoff is
+about 13x too slow for /orders. Required changes:
+  - do not throttle reads
+  - throttle writes per endpoint, not one shared window
+  - honour Retry-After; keep exponential backoff only as a fallback
+
+Build-log note: the throttle already failed its own test once (entry 1, token
+bucket). This is its second correction, and this time from live measurement
+rather than reasoning. The lesson is the same one as the fixtures: a limit we
+inferred from one endpoint was applied as if it were universal.
+
+**Webhooks work end to end.** payment.failed delivered, HMAC over the raw
+body matched, x-razorpay-event-id present. No polling fallback needed. The
+webhook payment entity is byte-identical in shape to the REST payment object,
+so one contract type covers both and the existing data/samples fixtures are
+valid for webhook tests.
+
+**Other confirmed behaviour, each with a design consequence:**
+
+  - Orders are created at FIRST ATTEMPT, not at link creation. Fresh links
+    have `order_id: null`; correlation must tolerate that.
+  - `payment_link.payments` is ALWAYS EMPTY even when attempts exist. Use
+    `GET /orders/<id>/payments` to enumerate attempts. This is the only
+    reliable path.
+  - `order.attempts` is a free server-side attempt counter. Cross-check the
+    max_attempts guardrail against it; divergence means a lost local record.
+  - Duplicate `reference_id` on payment links returns 400 with a specific
+    description, and its `metadata` is an ARRAY, not an object. Treat this
+    400 as "already exists, fetch it", not a hard failure.
+  - `count` caps at 100; `skip` works; no cursor.
+  - Link cancel works and is the clean way to retire a link. Cancelling an
+    already-cancelled or a paid link returns 400 with a terminal-state
+    description. Those are expected responses, not retryable errors.
+  - Unsigned requests DO reach the webhook endpoint. Signature verification
+    is the only defence against forged payment events.
