@@ -15,16 +15,18 @@ const noJitter = (): number => 0;
 const maxJitter = (): number => 1;
 
 describe('backoffDelayMs', () => {
-  it('starts at the observed 429 recovery time, not a sub-second delay', () => {
-    // DECISIONS.md: ~5 writes trip a 429 and clearing it needed ~40s.
-    expect(backoffDelayMs(1, RATE_LIMIT_BACKOFF, noJitter)).toBe(40_000);
+  it('starts at the fallback base, not the old fixed-40s delay', () => {
+    // docs/API-BEHAVIOUR.md: Retry-After now wins outright (see
+    // delayForFailure), so this policy only ever fires when the header is
+    // absent. 40s was sized for the wrong assumption; 5s is the fallback now.
+    expect(backoffDelayMs(1, RATE_LIMIT_BACKOFF, noJitter)).toBe(5_000);
   });
 
   it('doubles per retry', () => {
     const delays = [1, 2, 3].map((n) =>
       backoffDelayMs(n, RATE_LIMIT_BACKOFF, noJitter),
     );
-    expect(delays).toEqual([40_000, 80_000, 160_000]);
+    expect(delays).toEqual([5_000, 10_000, 20_000]);
   });
 
   it('caps the exponential term at maxMs', () => {
@@ -33,9 +35,8 @@ describe('backoffDelayMs', () => {
     );
   });
 
-  it('treats the exponential term as a floor and only adds jitter', () => {
-    // Full jitter could return 2s for a 429, and 2s is known to be too short.
-    const floor = 40_000;
+  it('treats the base delay as a floor and only adds jitter', () => {
+    const floor = 5_000;
     expect(backoffDelayMs(1, RATE_LIMIT_BACKOFF, noJitter)).toBe(floor);
     expect(backoffDelayMs(1, RATE_LIMIT_BACKOFF, maxJitter)).toBe(
       floor + RATE_LIMIT_BACKOFF.jitterMs,
@@ -109,6 +110,14 @@ describe('isRetryable', () => {
       expect(isRetryable(kind, false)).toBe(false);
     }
   });
+
+  it('never retries a quota-exceeded failure, read or write', () => {
+    // docs/API-BEHAVIOUR.md: permanent per-account ceiling. Waiting does
+    // not help, and cancelling existing resources does not free it, so
+    // unlike rate_limited this is never worth another attempt.
+    expect(isRetryable('quota_exceeded', true)).toBe(false);
+    expect(isRetryable('quota_exceeded', false)).toBe(false);
+  });
 });
 
 describe('policyFor', () => {
@@ -120,7 +129,23 @@ describe('policyFor', () => {
 });
 
 describe('delayForFailure', () => {
-  it('honours Retry-After when the server asks for longer than our policy', () => {
+  it('uses Retry-After outright, even when it is SHORTER than the fallback policy would give', () => {
+    // The bug this fixes: Razorpay sent Retry-After: 3 on an /orders 429
+    // while the old code did Math.max(computed, serverAsked), so a
+    // computed delay bigger than 3s silently discarded the server's
+    // instruction. retry_after_seconds must win outright, not just when
+    // it happens to be the larger number.
+    const delay = delayForFailure(
+      { kind: 'rate_limited', message: '429', retry_after_seconds: 3 },
+      1,
+      noJitter,
+    );
+    expect(delay).toBe(3_000);
+    // The fallback policy alone would have picked something bigger.
+    expect(backoffDelayMs(1, RATE_LIMIT_BACKOFF, noJitter)).toBeGreaterThan(3_000);
+  });
+
+  it('uses Retry-After outright even when it is LONGER than the fallback policy would give', () => {
     const delay = delayForFailure(
       { kind: 'rate_limited', message: '429', retry_after_seconds: 120 },
       1,
@@ -129,17 +154,22 @@ describe('delayForFailure', () => {
     expect(delay).toBe(120_000);
   });
 
-  it('keeps our own delay when the server asks for less', () => {
+  it('falls back to the exponential policy only when the header is absent', () => {
+    const delay = delayForFailure({ kind: 'network', message: 'reset' }, 2, noJitter);
+    expect(delay).toBe(2_000);
+  });
+
+  it('falls back for rate_limited too when no Retry-After was sent', () => {
+    const delay = delayForFailure({ kind: 'rate_limited', message: '429' }, 1, noJitter);
+    expect(delay).toBe(RATE_LIMIT_BACKOFF.baseMs);
+  });
+
+  it('treats retry_after_seconds: 0 as a real instruction, not "absent"', () => {
     const delay = delayForFailure(
-      { kind: 'rate_limited', message: '429', retry_after_seconds: 5 },
+      { kind: 'rate_limited', message: '429', retry_after_seconds: 0 },
       1,
       noJitter,
     );
-    expect(delay).toBe(40_000);
-  });
-
-  it('falls back to the policy when the server says nothing', () => {
-    const delay = delayForFailure({ kind: 'network', message: 'reset' }, 2, noJitter);
-    expect(delay).toBe(2_000);
+    expect(delay).toBe(0);
   });
 });

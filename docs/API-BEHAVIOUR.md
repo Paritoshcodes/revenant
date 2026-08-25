@@ -316,3 +316,19 @@ convenience, not a dependency.
 
 Remaining headroom at time of writing: 21 links still in `created` state,
 each supporting at least 6 attempts.
+
+### Both rate-limit failures return HTTP 429
+
+Verified with `curl -w "%{http_code}"`. The per-window limit and the
+per-account quota are indistinguishable by status code:
+
+    429 + { error.code: "BAD_REQUEST_ERROR",     description "Too many requests" }
+          -> transient, retry after Retry-After
+
+    429 + { error.code: "RATE_LIMIT_EXCEEDED",
+            description "test mode limit of 30 reached for payment_link" }
+          -> permanent, never retry
+
+So the client MUST inspect `error.code` in the body, not just the status.
+Keying on 429 alone would retry a permanent failure until maxRetries is
+exhausted, wasting minutes per call and never succeeding.

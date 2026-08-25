@@ -152,6 +152,15 @@ export interface ExperimentRun {
 export type FailureKind =
   | 'network'
   | 'rate_limited'
+  /**
+   * A permanent per-account ceiling (e.g. Razorpay's test-mode "30 payment
+   * links" cap), not a per-window throttle. Razorpay returns this on the
+   * same HTTP 429 as rate_limited, distinguished only by the error body's
+   * `code` (RATE_LIMIT_EXCEEDED vs BAD_REQUEST_ERROR). Never retryable:
+   * waiting does not help, and cancelling existing resources does not
+   * free the quota (docs/API-BEHAVIOUR.md).
+   */
+  | 'quota_exceeded'
   | 'auth'
   | 'validation'
   | 'not_found'

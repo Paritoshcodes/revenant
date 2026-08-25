@@ -39,9 +39,25 @@ export const defaultHttpDeps = (): HttpDeps => ({
 const authHeader = (creds: RazorpayCredentials): string =>
   `Basic ${Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')}`;
 
-/** HTTP status to failure kind. */
-const kindForStatus = (status: number): FailureKind => {
-  if (status === 429) return 'rate_limited';
+/**
+ * The permanent per-account quota ceiling (e.g. the test-mode 30 payment
+ * links cap) arrives on the SAME HTTP 429 as an ordinary per-window
+ * throttle response; the only difference is this error code
+ * (docs/API-BEHAVIOUR.md). A per-window 429 carries `BAD_REQUEST_ERROR`.
+ */
+const QUOTA_EXCEEDED_CODE = 'RATE_LIMIT_EXCEEDED';
+
+/**
+ * HTTP status (and, for a 429, the error body) to failure kind. The status
+ * alone cannot distinguish a retryable per-window throttle from a
+ * permanent quota ceiling: both are 429s, so the body's `error.code` is
+ * what tells them apart.
+ */
+const kindForStatus = (status: number, body: unknown): FailureKind => {
+  if (status === 429) {
+    const code = (body as RzpErrorBody | null)?.error?.code;
+    return code === QUOTA_EXCEEDED_CODE ? 'quota_exceeded' : 'rate_limited';
+  }
   if (status === 401 || status === 403) return 'auth';
   if (status === 404) return 'not_found';
   if (status === 409) return 'conflict';
@@ -135,7 +151,7 @@ const attemptOnce = async <T>(
 
   if (response.ok) return ok(parsed as T);
 
-  const kind = kindForStatus(response.status);
+  const kind = kindForStatus(response.status, parsed);
   const retryAfter = retryAfterMs(response.headers.get('retry-after'));
   return err<Failure>({
     kind,
@@ -150,8 +166,13 @@ const attemptOnce = async <T>(
 /**
  * Performs a request, throttling writes and retrying within policy.
  *
- * The throttle wraps each individual attempt, so a retry consumes a token
- * exactly like a first try does.
+ * The throttle wraps each individual attempt, so a retry consumes a slot
+ * exactly like a first try does. Reads never touch the throttle at all:
+ * 25 consecutive GET /payments returned zero 429s while /orders was being
+ * rate limited in parallel (docs/API-BEHAVIOUR.md), so pacing them would
+ * only slow the batch for no reason. Writes queue by `options.path`, the
+ * throttle's per-endpoint key, since /orders and /payment_links carry
+ * independent budgets.
  */
 export const request = async <T>(
   creds: RazorpayCredentials,
@@ -160,7 +181,7 @@ export const request = async <T>(
 ): Promise<Result<T>> => {
   const call = (): Promise<Result<T>> =>
     options.isWrite
-      ? deps.throttle.run(() => attemptOnce<T>(creds, deps, options))
+      ? deps.throttle.run(options.path, () => attemptOnce<T>(creds, deps, options))
       : attemptOnce<T>(creds, deps, options);
 
   let attempt = 0;

@@ -4,9 +4,12 @@
  * Pure functions only, no I/O and no clock, so the numbers below can be
  * asserted in a unit test rather than waited out.
  *
- * The constants come from observed test-mode behaviour recorded in
- * docs/DECISIONS.md: roughly 5 payment-link creates trip an HTTP 429, and
- * clearing it needed about 40 seconds.
+ * Razorpay sends `Retry-After` on its 429s and means it: /orders asked for
+ * 3 seconds while the old fixed 40s policy would have waited 13x longer
+ * for no reason (docs/API-BEHAVIOUR.md). `delayForFailure` therefore
+ * honours `retry_after_seconds` outright when present. The exponential
+ * policy below is a fallback for the rare case the header is absent, not
+ * the default path.
  */
 import type { Failure, FailureKind } from '@revenant/contracts';
 
@@ -24,13 +27,18 @@ export interface BackoffPolicy {
 }
 
 /**
- * A 429 needed ~40s to clear, so the first retry waits that long rather than
- * the usual sub-second. Jitter is additive rather than the more common full
- * jitter: full jitter could pick a 2-second delay, and we already know from
- * observation that 2 seconds is not enough.
+ * Fallback only: used when a 429 arrives WITHOUT a `Retry-After` header,
+ * which `delayForFailure` treats as the exception rather than the rule.
+ * 40s was sized when the header was being ignored outright; now that it
+ * wins whenever present, this path exists purely for the case we have no
+ * server signal at all. 5s sits close to the faster endpoint's observed
+ * recovery (/orders: 3s) with a little headroom, rather than assuming the
+ * slower one (/payment_links: ~40s) by default. Jitter stays additive
+ * rather than full jitter, so it can only push the wait up, never below
+ * the floor.
  */
 export const RATE_LIMIT_BACKOFF: BackoffPolicy = {
-  baseMs: 40_000,
+  baseMs: 5_000,
   factor: 2,
   maxMs: 160_000,
   jitterMs: 5_000,
@@ -51,8 +59,8 @@ export const TRANSIENT_BACKOFF: BackoffPolicy = {
  *
  * `random` is injected so the test can pin the jitter. The exponential term
  * is a floor: the returned delay is never below `baseMs * factor^(attempt-1)`
- * capped at `maxMs`, because the observed 429 recovery time is a hard
- * minimum, not an average to jitter around.
+ * capped at `maxMs`, because a policy's base delay is a hard minimum for
+ * that failure class, not an average to jitter around.
  */
 export const backoffDelayMs = (
   attempt: number,
@@ -100,6 +108,13 @@ export const retryAfterMs = (
  * error must NOT be retried, because we cannot tell whether the request
  * reached the API and created something. A 429 is different: a rate-limited
  * request was rejected before it did any work, so retrying it is safe.
+ *
+ * `quota_exceeded` is never retryable, for either reads or writes: it is a
+ * permanent per-account ceiling, not a transient condition, and Razorpay
+ * confirmed cancelling existing resources does not free it
+ * (docs/API-BEHAVIOUR.md). Falls out of the exhaustive lists below rather
+ * than needing its own branch — it matches neither write's single allowed
+ * kind nor any of the read exceptions.
  */
 export const isRetryable = (kind: FailureKind, isWrite: boolean): boolean => {
   if (isWrite) return kind === 'rate_limited';
@@ -111,16 +126,22 @@ export const policyFor = (kind: FailureKind): BackoffPolicy =>
   kind === 'rate_limited' ? RATE_LIMIT_BACKOFF : TRANSIENT_BACKOFF;
 
 /**
- * How long to wait before retrying `failure`, honouring a server-supplied
- * Retry-After when it asks for longer than our own policy would.
+ * How long to wait before retrying `failure`.
+ *
+ * `retry_after_seconds`, when present, wins outright: Razorpay sent
+ * `Retry-After: 3` on an /orders 429 while the old policy waited a fixed
+ * 40 seconds regardless, roughly 13x too slow. The exponential policy
+ * (with jitter) only runs when the header is absent, which is the
+ * exception, not the common case.
  */
 export const delayForFailure = (
   failure: Failure,
   attempt: number,
   random: () => number = Math.random,
 ): number => {
+  if (failure.retry_after_seconds !== undefined) {
+    return failure.retry_after_seconds * 1_000;
+  }
   const policy = policyFor(failure.kind);
-  const computed = backoffDelayMs(attempt, policy, random);
-  const serverAsked = (failure.retry_after_seconds ?? 0) * 1_000;
-  return Math.max(computed, serverAsked);
+  return backoffDelayMs(attempt, policy, random);
 };
