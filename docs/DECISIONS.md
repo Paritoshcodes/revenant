@@ -346,6 +346,48 @@ card fields reject until the card method is clicked, the method list
 rejects until contact is filled), so a regression to any of the four bugs
 now fails the suite instead of only a live run.
 
+**5. A second live run found a further five bugs, all missed by the first rebuild's own tests.**
+The driver rebuilt against the CORRECTION/VERIFIED sections of
+CHECKOUT-FLOW.md (entry 4) still shipped with five more assumptions a
+fuller live run, success and failure paths and a fail-then-retry
+sequence, disproved:
+
+  1. It captured no payment id at all. The popup's initial URL
+     (`/v1/payments/<id>/authenticate`) is the only reliable source, and
+     `popup.url()` loses it once the popup has navigated on to mocksharp
+     — a real risk headless, where that navigation can complete before
+     the handle is even read.
+  2. Outcome detection still keyed on the frame heading's mere existence.
+     `[data-testid="payment-status-heading"]` reads "Processing your
+     payment" then "Confirming Payment" on the FAILURE path for several
+     seconds before the retry surface appears; only its EXACT text,
+     "Payment Successful", means anything. On success the frame is torn
+     down mid-transition, throwing "Frame was detached" — a success
+     signal, not an error, and the driver had no path that tolerated it.
+  3. It never checked whether a link was already paid before driving it.
+     Re-attempting a paid link risks a phantom attempt against a checkout
+     that can no longer accept one.
+  4. It never accounted for retained field values on a retry. Card fields
+     keep their previous attempt's value in the DOM; a native setter
+     would append onto it rather than replace it.
+  5. The tokenisation dialog guard was already present but unverified
+     against the fact that it is independent of which card is used, only
+     of attempt number within the session — worth pinning down explicitly
+     rather than leaving as an assumption.
+
+None of the first four were caught by the rebuild's own test suite,
+because the fakes still modelled what the driver assumed rather than what
+the page does: nothing exercised a captured-id race, nothing modelled the
+heading's transient text over time, nothing modelled frame detachment, and
+nothing modelled an already-paid link. Rebuilt again: the fixture now
+advances outcome state per POLL TICK (driven only by the driver's own
+`sleep`, so it moves exactly when the driver actually waits, never on a
+wall clock), fires the popup's `/authenticate` request on a real deferred
+macrotask so a driver that reads the captured list synchronously gets
+nothing, and models frame detachment as a distinct, catchable failure
+mode. A dedicated test proves each of the five is now structurally
+caught, not merely avoided by the current code happening to be correct.
+
 ## 2026-08-24 Playwright driver notes
 
 - `PageLike` / `LocatorLike` structural interfaces rather than importing the
@@ -592,3 +634,36 @@ tests. Two probe-script auto-conclusions were also wrong. Both failures have
 the same shape: a tool that encodes the author's expectation will confirm
 it. Scripts collect evidence; conclusions come from reading raw fields.
 The contract test exists to keep model and reality aligned from here on.
+
+## Build log entry 6: `textContent()` auto-waits and hangs the failure path
+
+Found by a live smoke run. 206 tests passed.
+
+`pollOutcomeOnce` probed the heading with:
+
+    const headingText = await frame.locator(SELECTORS.paymentStatusHeading).textContent();
+
+Playwright's `textContent()` AUTO-WAITS for the element to exist, using the
+default 30s timeout. On the failure path the heading is present for ~5s
+("Processing your payment", "Confirming Payment") and then disappears at ~6s
+when the retry surface renders. From that moment the call blocks for the
+full timeout waiting for an element that will never return, so the
+retry-surface check on the next line is never reached and the whole attempt
+fails with a TimeoutError.
+
+Check ORDER compounded it: the blocking heading probe sits in front of the
+branch that would have resolved.
+
+Fix: every probe inside a poll tick must be non-blocking. Use `count()`
+first and only read `textContent()` when the element is known to exist, or
+pass a very short per-probe timeout (a few hundred ms) so a missing element
+fails the tick rather than the attempt.
+
+Why the fixture missed it: the fake `textContent()` returns immediately for
+a missing element. Playwright's does not. The fixture encoded an API
+behaviour that differs from the real library, which is a new variant of the
+same failure: previously the fixtures mismodelled Razorpay's DOM, here they
+mismodelled Playwright itself.
+
+This is the second bug in `pollOutcomeOnce` (see entry 5, resolving on
+heading existence). Both were caught by running a browser, neither by tests.

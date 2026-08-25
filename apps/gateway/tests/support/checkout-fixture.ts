@@ -1,36 +1,44 @@
 /**
  * A fake checkout page for testing src/browser/checkout-flow.ts.
  *
- * The first version of these fakes answered every selector on every
- * document unconditionally, so 16 passing tests missed all four DOM bugs
- * fixed on 2026-08-24 (see docs/DECISIONS.md, Build log entry 4): the
- * driver queried the top-level page instead of the checkout iframe, waited
- * for popup load instead of the mocksharp navigation, keyed success on a
- * selector that does not exist, and assumed elements existed before the
- * stage that creates them. This fixture models those constraints directly,
- * so a regression to any of them makes the corresponding test fail rather
- * than pass for the wrong reason:
+ * Modelled directly against docs/CHECKOUT-FLOW.md (DEFINITIVE, 2026-08-24)
+ * rather than against what the driver assumes: a fake that answers every
+ * query unconditionally cannot catch a driver that queries the wrong
+ * document, reads a transient state as terminal, or races a background
+ * capture. Five driver bugs shipped with 16 passing tests for exactly
+ * that reason (docs/DECISIONS.md, Build log entry 4). This fixture
+ * enforces, structurally:
  *
- *   - `page.frameLocator(selector)` for anything other than
- *     FRAME_SELECTOR returns a locator that rejects every call: querying
- *     the wrong document fails instead of silently finding nothing.
- *   - `page.click(...)` on the top-level page always throws: nothing in
- *     the corrected driver should ever call it (checkout elements are in
- *     the frame, the bank buttons are on the popup).
- *   - The frame's elements only resolve once the stage that creates them
- *     has been reached: the method list after contact is filled, the card
- *     fields after the card method is clicked, the outcome markers only
- *     after the popup's bank button was actually clicked.
- *   - The popup starts on an "intermediate" URL where its `click` always
- *     rejects; only after `waitForURL(MOCKSHARP_URL_PATTERN)` resolves
- *     does it accept a bank-button click.
+ *   - The frame boundary: `page.frameLocator` on anything but
+ *     FRAME_SELECTOR, and `page.locator` on anything but
+ *     `.Payment-Completed`, both return a locator that rejects every
+ *     call.
+ *   - Staged availability: the frame's elements only resolve once the
+ *     stage that creates them has been reached.
+ *   - The popup's two-URL sequence: its bank button rejects until
+ *     `waitForURL(MOCKSHARP_URL_PATTERN)` resolves, and its
+ *     `/authenticate` request only fires on a later macrotask — never
+ *     synchronously available the instant the popup opens.
+ *   - The outcome heading's transient text and frame detachment on
+ *     success: modelled per POLL TICK, advanced only by this fixture's
+ *     own `sleep`, so it moves exactly when (and only when) the driver
+ *     actually waits.
  */
 import {
   FRAME_SELECTOR,
   MOCKSHARP_URL_PATTERN,
+  PAYMENT_SUCCESSFUL_TEXT,
   SELECTORS,
 } from '../../src/browser/selectors.js';
-import type { FrameLocatorLike, LocatorLike, PageLike } from '../../src/browser/types.js';
+import { capturePaymentIds } from '../../src/browser/payment-id-capture.js';
+import type {
+  ContextLike,
+  FrameLocatorLike,
+  LocatorLike,
+  PageLike,
+  PaymentIdCapture,
+  RequestLike,
+} from '../../src/browser/types.js';
 
 type Stage = 'loaded' | 'contactFilled' | 'cardSelected' | 'submitted';
 const STAGE_ORDER: readonly Stage[] = ['loaded', 'contactFilled', 'cardSelected', 'submitted'];
@@ -40,34 +48,78 @@ interface World {
   saveCardPromptVisible: boolean;
   popupStage: 'unopened' | 'intermediate' | 'mocksharp';
   bankClicked: 'success' | 'failure' | null;
+  /** Poll ticks elapsed since the bank button was clicked; advanced only by this fixture's own sleep(). */
+  outcomeTick: number;
+  alreadyPaidOnLoad: boolean;
+  /** Last value fill() stored per selector: proves fill() overwrites rather than appends. */
+  fieldValues: Record<string, string>;
+  popupsOpened: number;
 }
 
 export interface CheckoutFixtureConfig {
-  /** Whether the conditional save-card prompt (step 8) shows up at all. */
   readonly saveCardPromptAppears?: boolean;
-  /** The bank click registers but neither outcome marker ever appears (a hung/broken page). */
-  readonly suppressOutcome?: boolean;
-  /** A call label (see below) to throw an Error at. */
   readonly throwAt?: string;
+  readonly alreadyPaidOnLoad?: boolean;
+  /**
+   * Poll tick at which the frame heading reaches exactly "Payment
+   * Successful" (success path only). Null skips the window entirely,
+   * modelling docs/CHECKOUT-FLOW.md section 12's "the margin is real but
+   * thin": the driver must then rely on the parent marker. Default 1.
+   */
+  readonly successHeadingTick?: number | null;
+  /** Poll tick from which the frame is unqueryable ("detached") on the success path. Default 2. */
+  readonly successDetachTick?: number;
+  /** Poll tick from which the parent's `.Payment-Completed` appears on the success path. Default equals successDetachTick. */
+  readonly successParentTick?: number;
+  /** Poll tick from which the retry surface appears on the failure path. Default 3. */
+  readonly failureSettleTick?: number;
+  /**
+   * Poll tick from which the heading stops returning text on the failure
+   * path. Default equals failureSettleTick (no gap). Set lower than
+   * failureSettleTick to model a window where the heading has already
+   * gone but the retry surface has not rendered yet — proves a poll tick
+   * completes via count() rather than blocking in textContent() on an
+   * element known to be absent (docs/DECISIONS.md, Build log entry 6).
+   */
+  readonly failureHeadingGoneTick?: number;
+  /** The bank click registers but neither outcome ever resolves: a hung page. */
+  readonly suppressOutcome?: boolean;
+  /** The popup opens, but its /authenticate request never fires: proves a genuine capture timeout surfaces. */
+  readonly suppressPaymentIdCapture?: boolean;
 }
 
 export interface CheckoutFixture {
   readonly page: PageLike;
+  readonly context: ContextLike;
+  readonly capture: PaymentIdCapture;
   readonly calls: string[];
   readonly world: World;
-  /** Options `page.goto` was last called with, for asserting waitUntil. */
   gotoOptions(): { readonly timeout?: number; readonly waitUntil?: string } | undefined;
+  /** Advances outcome-phase state; wire into AttemptFlowOptions.sleep so polling costs no real time. */
+  sleep(ms: number): Promise<void>;
 }
 
 export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): CheckoutFixture => {
+  const successHeadingTick =
+    config.successHeadingTick === undefined ? 1 : config.successHeadingTick;
+  const successDetachTick = config.successDetachTick ?? 2;
+  const successParentTick = config.successParentTick ?? successDetachTick;
+  const failureSettleTick = config.failureSettleTick ?? 3;
+  const failureHeadingGoneTick = config.failureHeadingGoneTick ?? failureSettleTick;
+
   const calls: string[] = [];
   const world: World = {
     stage: 'loaded',
     saveCardPromptVisible: false,
     popupStage: 'unopened',
     bankClicked: null,
+    outcomeTick: 0,
+    alreadyPaidOnLoad: config.alreadyPaidOnLoad ?? false,
+    fieldValues: {},
+    popupsOpened: 0,
   };
   let lastGotoOptions: { timeout?: number; waitUntil?: string } | undefined;
+  const requestHandlers: Array<(request: RequestLike) => void> = [];
 
   const record = (label: string): void => {
     calls.push(label);
@@ -77,11 +129,43 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
   const stageAtLeast = (required: Stage): boolean =>
     STAGE_ORDER.indexOf(world.stage) >= STAGE_ORDER.indexOf(required);
 
+  const detached = (): Error => new Error('Frame was detached');
+
+  // -- outcome-phase state, keyed by world.outcomeTick --------------------
+
+  const frameIsDetached = (): boolean =>
+    world.bankClicked === 'success' && world.outcomeTick >= successDetachTick;
+
+  const parentPaymentCompletedCount = (): number => {
+    if (world.alreadyPaidOnLoad) return 1;
+    if (world.bankClicked === 'success' && world.outcomeTick >= successParentTick) return 1;
+    return 0;
+  };
+
+  const headingText = (): string | null => {
+    if (world.bankClicked === null) return null;
+    if (world.bankClicked === 'failure') {
+      return world.outcomeTick < failureHeadingGoneTick ? 'Confirming Payment' : null;
+    }
+    if (successHeadingTick !== null && world.outcomeTick === successHeadingTick) {
+      return PAYMENT_SUCCESSFUL_TEXT;
+    }
+    return 'Confirming Payment';
+  };
+
+  const retrySurfaceCount = (): number => {
+    if (world.bankClicked !== 'failure') return 0;
+    return world.outcomeTick >= failureSettleTick ? 1 : 0;
+  };
+
+  // -- frame ----------------------------------------------------------------
+
   const frameLocator = (selector: string): LocatorLike => ({
     fill: async (value) => {
       record(`frame.fill(${selector}, ${value})`);
       if (selector === SELECTORS.contact) {
         if (world.stage === 'loaded') world.stage = 'contactFilled';
+        world.fieldValues[selector] = value;
         return;
       }
       if (
@@ -92,6 +176,10 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
         if (!stageAtLeast('cardSelected')) {
           throw new Error(`${selector} does not exist yet: the card method was not selected`);
         }
+        // fill() clears then types: overwrite, never append, or a retry
+        // would corrupt the field with the previous attempt's value
+        // (docs/CHECKOUT-FLOW.md section 7).
+        world.fieldValues[selector] = value;
         return;
       }
       throw new Error(`unexpected fill on ${selector}`);
@@ -142,37 +230,58 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
         }
         return;
       }
-      if (selector === SELECTORS.paymentStatusHeading) {
-        if (world.bankClicked !== 'success') {
-          throw new Error('timeout: payment-status-heading not visible');
-        }
-        return;
-      }
-      if (selector === SELECTORS.retrySurface) {
-        if (world.bankClicked !== 'failure') {
-          throw new Error('timeout: retry-surface not visible');
-        }
-        return;
-      }
       throw new Error(`unexpected waitFor on ${selector}`);
+    },
+    count: async () => {
+      record(`frame.count(${selector})`);
+      if (selector === SELECTORS.retrySurface) {
+        if (frameIsDetached()) throw detached();
+        return retrySurfaceCount();
+      }
+      if (selector === SELECTORS.paymentStatusHeading) {
+        if (frameIsDetached()) throw detached();
+        return headingText() !== null ? 1 : 0;
+      }
+      throw new Error(`unexpected count on ${selector}`);
+    },
+    textContent: async (options) => {
+      record(`frame.textContent(${selector})`);
+      if (selector === SELECTORS.paymentStatusHeading) {
+        if (frameIsDetached()) throw detached();
+        const text = headingText();
+        if (text === null) {
+          // Playwright's real textContent() auto-waits for the element
+          // to be attached; on a genuinely absent element it blocks for
+          // its timeout (30s default) and then rejects, it does not
+          // resolve with null (docs/DECISIONS.md, Build log entry 6).
+          // The fixture rejects immediately rather than actually
+          // waiting, but the rejection itself is what a driver that
+          // skips the count() check first must be made to observe.
+          throw new Error(
+            `Timeout ${options?.timeout ?? 30_000}ms exceeded waiting for ${selector} to be attached`,
+          );
+        }
+        return text;
+      }
+      throw new Error(`unexpected textContent on ${selector}`);
     },
   });
 
-  const deadLocator = (frameSelector: string, elementSelector: string): LocatorLike => ({
-    fill: async () => {
-      throw new Error(`no frame matching ${frameSelector}: cannot locate ${elementSelector}`);
-    },
-    click: async () => {
-      throw new Error(`no frame matching ${frameSelector}: cannot locate ${elementSelector}`);
-    },
-    waitFor: async () => {
-      throw new Error(`no frame matching ${frameSelector}: cannot locate ${elementSelector}`);
-    },
-  });
+  const deadLocator = (documentLabel: string, elementSelector: string): LocatorLike => {
+    const fail = async (): Promise<never> => {
+      throw new Error(`no frame matching ${documentLabel}: cannot locate ${elementSelector}`);
+    };
+    return { fill: fail, click: fail, waitFor: fail, count: fail, textContent: fail };
+  };
+
+  // -- popup ------------------------------------------------------------------
 
   const popupPage: PageLike = {
     goto: () => {
       throw new Error('popup.goto should not be called');
+    },
+    locator: () => {
+      throw new Error('popup.locator should not be called');
     },
     frameLocator: () => {
       throw new Error('popup.frameLocator should not be called: the mock bank page has no frame');
@@ -185,6 +294,10 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
         );
       }
       if (selector === SELECTORS.bankSuccess || selector === SELECTORS.bankFailure) {
+        // Each attempt's outcome timeline starts fresh from its own bank
+        // click, not from wherever a previous attempt in this session
+        // left off.
+        world.outcomeTick = 0;
         if (!config.suppressOutcome) {
           world.bankClicked = selector === SELECTORS.bankSuccess ? 'success' : 'failure';
         }
@@ -207,10 +320,45 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
     },
   };
 
+  // -- parent page --------------------------------------------------------------
+
+  const pageLocator = (selector: string): LocatorLike => {
+    if (selector !== SELECTORS.paymentCompleted) {
+      const fail = async (): Promise<never> => {
+        throw new Error(
+          `page.locator(${selector}) should never be called: only .Payment-Completed lives on the parent`,
+        );
+      };
+      return { fill: fail, click: fail, waitFor: fail, count: fail, textContent: fail };
+    }
+    return {
+      fill: async () => {
+        throw new Error('div.Payment-Completed is not fillable');
+      },
+      click: async () => {
+        throw new Error('div.Payment-Completed is not clickable');
+      },
+      waitFor: async () => {
+        throw new Error('use count(), not waitFor(), for the pre-flight/outcome check');
+      },
+      count: async () => {
+        record(`page.count(${selector})`);
+        return parentPaymentCompletedCount();
+      },
+      textContent: async () => {
+        throw new Error('div.Payment-Completed textContent is not modelled');
+      },
+    };
+  };
+
   const page: PageLike = {
     goto: async (url, options) => {
       record(`goto(${url})`);
       lastGotoOptions = options;
+    },
+    locator: (selector) => {
+      calls.push(`locator(${selector})`);
+      return pageLocator(selector);
     },
     frameLocator: (selector): FrameLocatorLike => {
       calls.push(`frameLocator(${selector})`);
@@ -230,6 +378,20 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
     waitForEvent: async (event) => {
       record(`waitForEvent(${event})`);
       world.popupStage = 'intermediate';
+      world.popupsOpened += 1;
+      const paymentIdSegment = `Ttest${world.popupsOpened}`;
+      if (config.suppressPaymentIdCapture) return popupPage;
+      // Fires on a LATER macrotask, never synchronously: proves the
+      // driver's wait-for-growth is load-bearing, not incidentally
+      // already satisfied by the time it checks
+      // (docs/CHECKOUT-FLOW.md section 11).
+      setTimeout(() => {
+        for (const handler of requestHandlers) {
+          handler({
+            url: () => `https://api.razorpay.com/v1/payments/${paymentIdSegment}/authenticate`,
+          });
+        }
+      }, 0);
       return popupPage;
     },
     waitForURL: () => {
@@ -240,5 +402,22 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
     },
   };
 
-  return { page, calls, world, gotoOptions: () => lastGotoOptions };
+  const context: ContextLike = {
+    on: (event, handler) => {
+      if (event === 'request') requestHandlers.push(handler);
+    },
+  };
+
+  return {
+    page,
+    context,
+    capture: capturePaymentIds(context),
+    calls,
+    world,
+    gotoOptions: () => lastGotoOptions,
+    sleep: async (ms) => {
+      calls.push(`sleep(${ms})`);
+      world.outcomeTick += 1;
+    },
+  };
 };

@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import { chromium } from 'playwright';
 
-import { openCheckout, attempt } from '../src/browser/index.js';
+import { openCheckout, attempt, capturePaymentIds } from '../src/browser/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..', '..');
@@ -36,7 +36,9 @@ const card = entry.card.replace(/\s/g, '');
 console.log(`scenario ${scenario}\ncard     ${card}\nurl      ${entry.short_url}\n`);
 
 const browser = await chromium.launch({ headless: false, slowMo: 300 });
-const page = await browser.newPage();
+const context = await browser.newContext();
+const capture = capturePaymentIds(context as never);
+const page = await context.newPage();
 
 const opts = {
   contact: '9000090000',
@@ -55,7 +57,7 @@ if (!opened.ok) {
 console.log('openCheckout ok');
 
 // Attempt 1: take the Failure path so we land on the retry surface.
-const first = await attempt(page as never, card, 'failure', opts);
+const first = await attempt(page as never, card, 'failure', capture, opts);
 console.log('attempt 1:', JSON.stringify(first));
 
 if (!first.ok || first.value.outcome !== 'failed') {
@@ -67,8 +69,10 @@ if (!first.ok || first.value.outcome !== 'failed') {
 // Attempt 2 on the SAME page. This is the claim the whole batch design
 // rests on: the retry surface re-exposes the card entry point.
 console.log('\nretrying on the same page...');
-const second = await attempt(page as never, card, 'success', opts);
+const second = await attempt(page as never, card, 'success', capture, opts);
 console.log('attempt 2:', JSON.stringify(second));
+
+console.log('\npayment ids captured:', capture.list());
 
 console.log(
   second.ok && second.value.outcome === 'captured'

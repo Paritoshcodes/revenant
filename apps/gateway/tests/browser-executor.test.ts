@@ -6,22 +6,30 @@ import type { Failure, Result } from '@revenant/contracts';
 import { createPlaywrightAttemptExecutor } from '../src/browser/executor.js';
 import type { CheckoutSession, CheckoutSessionProvider } from '../src/browser/types.js';
 import { createCheckoutFixture } from './support/checkout-fixture.js';
+import type { CheckoutFixture } from './support/checkout-fixture.js';
 
 const openedSession = (
   outcome: 'success' | 'failure',
   cardNumber = '4111111111111111',
-): CheckoutSession => {
-  const { page, world } = createCheckoutFixture();
-  world.stage = 'contactFilled'; // as if openCheckout already ran
-  return { page, cardNumber, outcome };
+): { session: CheckoutSession; fixture: CheckoutFixture } => {
+  const fixture = createCheckoutFixture();
+  fixture.world.stage = 'contactFilled'; // as if openCheckout already ran
+  return {
+    session: { page: fixture.page, cardNumber, outcome, capture: fixture.capture },
+    fixture,
+  };
 };
 
 describe('createPlaywrightAttemptExecutor', () => {
-  it('resolves a session, drives it through the real frame/popup flow, and reports captured', async () => {
+  it('resolves a session, drives it through the real frame/popup flow, and reports the captured payment id', async () => {
+    const { session, fixture } = openedSession('success');
     const sessions: CheckoutSessionProvider = {
-      prepare: async () => ok(openedSession('success')),
+      prepare: async () => ok(session),
     };
-    const executor = createPlaywrightAttemptExecutor({ sessions });
+    const executor = createPlaywrightAttemptExecutor({
+      sessions,
+      options: { sleep: fixture.sleep },
+    });
 
     const result = await executor.execute({
       transactionId: 'txn_abc',
@@ -34,7 +42,7 @@ describe('createPlaywrightAttemptExecutor', () => {
     if (!result.ok) return;
     expect(result.value).toEqual({
       outcome: 'captured',
-      rzpPaymentId: null,
+      rzpPaymentId: 'pay_Ttest1',
       rzpRequestId: null,
       rzpResponseId: null,
       errorCode: null,
@@ -46,10 +54,14 @@ describe('createPlaywrightAttemptExecutor', () => {
   });
 
   it('reports a failed attempt when the retry surface appears', async () => {
+    const { session, fixture } = openedSession('failure', '4100280000020007');
     const sessions: CheckoutSessionProvider = {
-      prepare: async () => ok(openedSession('failure', '4100280000020007')),
+      prepare: async () => ok(session),
     };
-    const executor = createPlaywrightAttemptExecutor({ sessions });
+    const executor = createPlaywrightAttemptExecutor({
+      sessions,
+      options: { sleep: fixture.sleep },
+    });
 
     const result = await executor.execute({
       transactionId: 'txn_abc',
@@ -61,6 +73,7 @@ describe('createPlaywrightAttemptExecutor', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.outcome).toBe('failed');
+    expect(result.value.rzpPaymentId).toBe('pay_Ttest1');
   });
 
   it('propagates a failure to resolve a session without driving any page', async () => {
@@ -85,9 +98,10 @@ describe('createPlaywrightAttemptExecutor', () => {
   it('propagates a typed failure from the checkout flow itself', async () => {
     // Session handed back at the wrong stage (never contact-filled): the
     // card method click rejects, exactly as a real premature click would.
-    const { page } = createCheckoutFixture();
+    const { page, capture } = createCheckoutFixture();
     const sessions: CheckoutSessionProvider = {
-      prepare: async () => ok({ page, cardNumber: '4111111111111111', outcome: 'success' }),
+      prepare: async () =>
+        ok({ page, cardNumber: '4111111111111111', outcome: 'success', capture }),
     };
     const executor = createPlaywrightAttemptExecutor({ sessions });
 
