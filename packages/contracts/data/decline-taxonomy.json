@@ -1,6 +1,6 @@
 {
   "source": "Razorpay published error documentation, error-simulation test cards enumerated in scripts/make_links.py. Observed flags come from docs/DECISIONS.md and data/samples/taxonomy.json.",
-  "note": "observed_in_test_mode is data, never inferred at read time. Exactly two reasons reproduce in Razorpay test mode; every other reason exists only in the Layer 2 synthetic population. A figure derived from a reason flagged false can never be labelled OBSERVED.",
+  "note": "observed_in_test_mode is data, never inferred at read time. Exactly three reasons reproduce in Razorpay test mode; every other reason exists only in the Layer 2 synthetic population. A figure derived from a reason flagged false can never be labelled OBSERVED.",
   "reasons": [
     {
       "error_reason": "payment_failed",
@@ -64,10 +64,11 @@
     {
       "error_reason": "payment_cancelled",
       "error_source": "customer",
-      "error_step": "payment_authorization",
-      "grid_cell": "customer/payment_authorization",
-      "observed_in_test_mode": false,
-      "test_cards": ["4100 2800 0007 0002"]
+      "error_step": "payment_authentication",
+      "grid_cell": "customer/payment_authentication",
+      "observed_in_test_mode": true,
+      "test_cards": [],
+      "note": "Verified live 2026-08-24 on pay_TTf77VQJupE6KI: a payment abandoned AFTER submit (popup opened, neither bank button clicked) settles as payment_cancelled/customer/payment_authentication within about a minute of the popup closing. Not reproduced via a test card; this is a real user-action path, not a card simulation."
     },
     {
       "error_reason": "card_disabled_online",

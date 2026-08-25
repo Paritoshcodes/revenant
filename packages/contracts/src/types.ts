@@ -14,11 +14,20 @@ export type ErrorSource =
   | 'business'
   | 'internal';
 
-/** Razorpay `error_step`. `*` is the wildcard used by the internal grid row. */
+/**
+ * Razorpay `error_step`. `*` is the wildcard used by the internal grid row.
+ * `payment_authentication` is distinct from `authentication`: observed on
+ * a payment abandoned after submit (popup opened, neither bank button
+ * clicked), which settles as `payment_cancelled | customer |
+ * payment_authentication` (docs/DECISIONS.md, "Final gap closure").
+ * `authentication` remains the gateway/OTP-style step; this is the
+ * customer's own act of completing (or not completing) the payment.
+ */
 export type ErrorStep =
   | 'payment_initiation'
   | 'payment_authorization'
   | 'authentication'
+  | 'payment_authentication'
   | '*';
 
 /** `${ErrorSource}/${ErrorStep}`, the key written to `decisions.grid_cell`. */

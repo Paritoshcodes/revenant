@@ -12,6 +12,7 @@
     "apps/dashboard"
   ],
   "scripts": {
+    "setup": "node scripts/setup.mjs",
     "build": "tsc -b packages/contracts apps/gateway apps/dashboard",
     "typecheck": "npm run build",
     "clean": "tsc -b --clean packages/contracts apps/gateway apps/dashboard",

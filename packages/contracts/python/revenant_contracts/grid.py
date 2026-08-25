@@ -67,7 +67,7 @@ def lookup_decline_reason(error_reason: str) -> DeclineReason | None:
 
 
 def is_observed_in_test_mode(error_reason: str) -> bool:
-    """True only for the two reasons that reproduce in Razorpay test mode."""
+    """True only for the three reasons that reproduce in Razorpay test mode."""
     reason = lookup_decline_reason(error_reason)
     return reason is not None and reason.observed_in_test_mode
 

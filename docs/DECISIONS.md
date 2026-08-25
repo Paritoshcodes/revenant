@@ -667,3 +667,69 @@ mismodelled Playwright itself.
 
 This is the second bug in `pollOutcomeOnce` (see entry 5, resolving on
 heading existence). Both were caught by running a browser, neither by tests.
+
+## 2026-08-24 Webhook handler promoted to real source; taxonomy now three classes
+
+**`scripts/webhook-receiver.mts` promoted to `src/webhooks/`.** The probe
+script's approach (acknowledge before processing, HMAC over the raw body,
+timing-safe compare) was already correct and is now real source, split for
+testability: `verify.ts` (signature only), `events-store.ts` (DB dedup and
+record), `dispatch.ts` (pure description of one envelope, no ordering
+assumptions), `handler.ts` (Express wiring). `handleWebhookRequest` returns
+the HTTP response to send and a separate `settled` promise for the
+asynchronous work, so the 5-second acknowledgement rule
+(docs/API-BEHAVIOUR.md section 8) is provable in a test without mocking
+Express request/response objects at all: call it with a Buffer and a fake
+db, assert the response is decided before `await`ing `settled`.
+
+**`webhook_events` is a sixth table.** Logged here per CLAUDE.md ("Postgres.
+Five tables. Do not add more without logging it in DECISIONS.md"), migration
+0004. Duplicate delivery is expected by design, not exceptional: Razorpay
+retries on a slow or timed-out ack, and x-razorpay-event-id is the only
+stable identity across redeliveries. The unique constraint on `event_id` is
+the enforcement point, exactly like `attempts.idempotency_key`: `INSERT ...
+ON CONFLICT DO NOTHING` makes the dedup check atomic rather than a racy
+SELECT-then-insert. `payment.downtime.*` events are stored here too, not
+discarded: they report a bank or method as currently degraded, a policy
+input for delaying retries that no dunning product surveyed uses.
+
+**Payment entity reused, not re-typed.** `RzpPayment` in
+`src/razorpay/types.ts` already matches the webhook payload's payment
+entity byte-for-byte (docs/API-BEHAVIOUR.md section 8), so
+`src/webhooks/types.ts` imports it directly rather than defining a second
+type. `extractOrder`/`extractPaymentLink` reuse `RzpOrder`/`RzpPaymentLink`
+the same way, on the reasonable but NOT independently verified assumption
+that Razorpay wraps every entity the same way it was confirmed to wrap
+payment. `payment.downtime.*`'s payload key and shape were not observed in
+the material this was built against, so it is stored verbatim and never
+parsed into a typed entity.
+
+**Middleware order matters for raw-body verification.** The webhook route's
+`express.raw({type:'application/json'})` is mounted in `createApp()` BEFORE
+the global `express.json()`. A request body stream can only be consumed
+once; had the global JSON parser run first, it would have already parsed
+and drained the body, leaving nothing for the webhook route's raw-body
+middleware to hash. `createApp()` now takes an explicit `AppDeps` (a
+`Queryable` db and the webhook secret) instead of being parameterless.
+
+**Decline taxonomy is three observed classes, not two: `payment_cancelled`
+moved to a new `payment_authentication` step.** A payment abandoned after
+submit (popup opened, neither bank button clicked) resolves to
+`payment_cancelled | customer | payment_authentication`
+(docs/DECISIONS.md, "Final gap closure", pay_TTf77VQJupE6KI). That step
+value is distinct from both `payment_authorization` (the generic
+`payment_failed` row) and `authentication` (the gateway/OTP-style row) and
+did not previously exist in the `ErrorStep` union, the policy grid, or the
+`attempts.error_step` CHECK constraint. Added a `payment_authentication`
+grid row (`customer/payment_authentication`, same `nudge_no_auto_retry`
+action as its `payment_authorization` sibling), widened the constraint
+(migration 0003), and moved `decline-taxonomy.json`'s `payment_cancelled`
+entry onto the new grid cell with `observed_in_test_mode: true`. Its
+`test_cards` list was cleared rather than left at the previously-documented
+`4100 2800 0007 0002`: the documented decline taxonomy does not reproduce
+via test cards in this account (this same log, "Razorpay test-mode
+capability findings"), and the real reproduction path is abandonment, a
+user action, not a card simulation. No TypeScript or Python test asserted
+an exact count of two observed reasons, so none needed fixing; the
+`decline-taxonomy.json` note and `is_observed_in_test_mode`'s Python
+docstring, which did assert "two", were updated to "three".

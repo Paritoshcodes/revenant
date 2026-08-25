@@ -39,6 +39,15 @@
       "observable_in_test_mode": false
     },
     {
+      "grid_cell": "customer/payment_authentication",
+      "error_source": "customer",
+      "error_step": "payment_authentication",
+      "failure_class": "customer",
+      "action": "nudge_no_auto_retry",
+      "action_label": "nudge, do not auto-retry",
+      "observable_in_test_mode": true
+    },
+    {
       "grid_cell": "business/payment_initiation",
       "error_source": "business",
       "error_step": "payment_initiation",

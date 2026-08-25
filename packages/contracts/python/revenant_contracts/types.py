@@ -10,7 +10,13 @@ from dataclasses import dataclass
 from typing import Literal
 
 ErrorSource = Literal["gateway", "bank", "customer", "business", "internal"]
-ErrorStep = Literal["payment_initiation", "payment_authorization", "authentication", "*"]
+ErrorStep = Literal[
+    "payment_initiation",
+    "payment_authorization",
+    "authentication",
+    "payment_authentication",
+    "*",
+]
 FailureClass = Literal["transient", "soft", "customer", "terminal"]
 RecoveryAction = Literal[
     "retry_with_backoff",
