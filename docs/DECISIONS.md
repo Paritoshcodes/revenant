@@ -967,3 +967,37 @@ does not need resolving: the order-based path is deleted, and the
 `:visible`-scoped selector is correct under either explanation because it
 defers to Playwright's own actionability check rather than to our belief
 about which button is real.
+
+## SUPERSEDED: the "parked, not deleted" entry above
+
+The entry at line ~902 says `src/browser/checkout-page.ts` and
+`src/recovery/create-batch.ts` are "parked, not deleted, left on disk,
+unused". That was true when written and is now WRONG. Both files were
+deleted later the same day in the cleanup entry below. This log is
+append-only, so the earlier entry stays as history; this note is the
+correction.
+
+Current truth: both files no longer exist. Git history has them. The batch
+primitive is `src/recovery/create-link-batch.ts` on the hosted payment-link
+surface. `docs/API-BEHAVIOUR.md` has been corrected to match.
+
+The line about the `:visible`-scoped selector still standing "regardless,
+parked or not" also holds for a different reason now: nothing drives the
+order-based surface any more, and the selector is correct on the hosted
+surface on its own merits.
+
+## Standing rule: contradictions get resolved, not accumulated
+
+Three have now appeared in this log (the PerimeterX misdiagnosis, the
+two-submit-buttons observation, and this parked-vs-deleted drift). Two were
+caught only because someone re-read the file.
+
+When a later finding contradicts an earlier entry, append a correction that
+names the earlier entry explicitly and states which is current. Never leave
+two entries that a future reader could act on in opposite directions. The
+append-only rule preserves history; it does not license leaving the record
+ambiguous about the present.
+
+One contradiction remains OPEN by design and is marked as such: the two
+conflicting live observations of `add-card-cta` versus `bottom-cta-button`.
+Neither is cited as fact anywhere, and no code depends on resolving it.

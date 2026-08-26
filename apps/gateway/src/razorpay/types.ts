@@ -41,6 +41,11 @@ export interface RzpPaymentLink {
   readonly currency: string;
   readonly status: 'created' | 'partially_paid' | 'expired' | 'cancelled' | 'paid';
   readonly short_url: string;
+  /**
+   * Null until the first attempt (docs/API-BEHAVIOUR.md section 2): a link
+   * just created has no order yet. Correlation logic must tolerate this.
+   */
+  readonly order_id: string | null;
   /** Razorpay DOES reject a duplicate of this, unlike order receipts. */
   readonly reference_id: string | null;
   readonly description: string | null;

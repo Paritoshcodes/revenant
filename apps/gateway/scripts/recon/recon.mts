@@ -1,4 +1,23 @@
 /**
+ * HISTORICAL. Not runnable as-is: it reads data/samples/link_map.json,
+ * a snapshot of payment links created 2026-08-24, since deleted (all 13
+ * were consumed; the quota those links existed to conserve is gone too,
+ * see docs/API-BEHAVIOUR.md and docs/DECISIONS.md). Kept for the record
+ * of how the original DOM reconnaissance was done, not as a live tool.
+ *
+ * Its findings are already captured in docs/CHECKOUT-FLOW.md and
+ * docs/DECISIONS.md's build log, which supersede anything this script
+ * would print. It also predates fixes made since (e.g. it drives
+ * `[data-testid="bottom-cta-button"]` directly rather than the
+ * `:visible`-scoped selector in src/browser/selectors.ts), so treat any
+ * output as informative only, not as current DOM ground truth.
+ *
+ * If reconnaissance like this is needed again, prefer creating a fresh
+ * payment link via `client.createPaymentLink` (see scripts/smoke-checkout.mts)
+ * over resurrecting this script's link_map.json dependency.
+ *
+ * Original description follows.
+ *
  * Full checkout reconnaissance. Walks every step of the flow and dumps the
  * real DOM state at each one, into tmp/recon.json.
  *

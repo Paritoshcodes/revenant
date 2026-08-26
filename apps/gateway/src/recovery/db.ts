@@ -6,6 +6,10 @@
  */
 import { err, ok } from '@revenant/contracts';
 import type {
+  Arm,
+  AttemptOutcome,
+  ErrorSource,
+  ErrorStep,
   Failure,
   GridCell,
   GuardrailVerdict,
@@ -96,5 +100,134 @@ export const closeTransaction = async (
     return ok(undefined);
   } catch (cause) {
     return err(toFailure(cause, 'closeTransaction'));
+  }
+};
+
+// -- reconciliation reads/writes --------------------------------------------
+
+export interface TransactionRow {
+  readonly id: string;
+  readonly rzpOrderId: string | null;
+  readonly rzpPaymentLinkId: string | null;
+  readonly amountPaise: number;
+  readonly arm: Arm;
+  readonly status: TransactionStatus;
+}
+
+interface RawTransactionRow {
+  id: string;
+  rzp_order_id: string | null;
+  rzp_payment_link_id: string | null;
+  amount_paise: string | number;
+  arm: string;
+  status: string;
+}
+
+const toTransactionRow = (row: RawTransactionRow): TransactionRow => ({
+  id: row.id,
+  rzpOrderId: row.rzp_order_id,
+  rzpPaymentLinkId: row.rzp_payment_link_id,
+  amountPaise: Number(row.amount_paise),
+  arm: row.arm as Arm,
+  status: row.status as TransactionStatus,
+});
+
+export const fetchTransaction = async (
+  db: Queryable,
+  transactionId: string,
+): Promise<Result<TransactionRow | null>> => {
+  try {
+    const result = await db.query(
+      `SELECT id, rzp_order_id, rzp_payment_link_id, amount_paise, arm, status
+         FROM transactions WHERE id = $1`,
+      [transactionId],
+    );
+    const row = result.rows[0] as RawTransactionRow | undefined;
+    return ok(row === undefined ? null : toTransactionRow(row));
+  } catch (cause) {
+    return err(toFailure(cause, `fetchTransaction ${transactionId}`));
+  }
+};
+
+/**
+ * Orders are created at the first attempt, not at link creation
+ * (docs/API-BEHAVIOUR.md section 2), so `transactions.rzp_order_id` can
+ * still be null for a transaction that has already attempted once. This
+ * persists it once discovered, so later reconciliation runs do not need to
+ * re-fetch the payment link just to learn its order id again.
+ */
+export const setTransactionOrderId = async (
+  db: Queryable,
+  transactionId: string,
+  orderId: string,
+): Promise<Result<void>> => {
+  try {
+    const result = await db.query(
+      'UPDATE transactions SET rzp_order_id = $2 WHERE id = $1',
+      [transactionId, orderId],
+    );
+    if (result.rowCount === 0) {
+      return err<Failure>({
+        kind: 'not_found',
+        message: `setTransactionOrderId: no transaction ${transactionId}`,
+      });
+    }
+    return ok(undefined);
+  } catch (cause) {
+    return err(toFailure(cause, `setTransactionOrderId ${transactionId}`));
+  }
+};
+
+export interface AttemptRow {
+  readonly id: number;
+  readonly transactionId: string;
+  readonly attemptNumber: number;
+  readonly idempotencyKey: string;
+  readonly rzpPaymentId: string | null;
+  readonly errorSource: ErrorSource | null;
+  readonly errorStep: ErrorStep | null;
+  readonly outcome: AttemptOutcome;
+  readonly createdAt: string;
+}
+
+interface RawAttemptRow {
+  id: string | number;
+  transaction_id: string;
+  attempt_number: number;
+  idempotency_key: string;
+  rzp_payment_id: string | null;
+  error_source: string | null;
+  error_step: string | null;
+  outcome: string;
+  created_at: string | Date;
+}
+
+const toAttemptRow = (row: RawAttemptRow): AttemptRow => ({
+  id: Number(row.id),
+  transactionId: row.transaction_id,
+  attemptNumber: row.attempt_number,
+  idempotencyKey: row.idempotency_key,
+  rzpPaymentId: row.rzp_payment_id,
+  errorSource: row.error_source as ErrorSource | null,
+  errorStep: row.error_step as ErrorStep | null,
+  outcome: row.outcome as AttemptOutcome,
+  createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+});
+
+/** Oldest first: attempt_number ascending is the same order the attempts actually happened in. */
+export const listAttempts = async (
+  db: Queryable,
+  transactionId: string,
+): Promise<Result<readonly AttemptRow[]>> => {
+  try {
+    const result = await db.query(
+      `SELECT id, transaction_id, attempt_number, idempotency_key, rzp_payment_id,
+              error_source, error_step, outcome, created_at
+         FROM attempts WHERE transaction_id = $1 ORDER BY attempt_number ASC`,
+      [transactionId],
+    );
+    return ok((result.rows as RawAttemptRow[]).map(toAttemptRow));
+  } catch (cause) {
+    return err(toFailure(cause, `listAttempts ${transactionId}`));
   }
 };

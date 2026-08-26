@@ -26,6 +26,15 @@ export interface RazorpayClient {
    */
   createOrder(input: CreateOrderInput): Promise<Result<RzpOrder>>;
   fetchOrder(orderId: string): Promise<Result<RzpOrder>>;
+  /**
+   * The only reliable way to enumerate a link's attempts
+   * (docs/API-BEHAVIOUR.md section 3): `payment_link.payments` is always
+   * empty even when attempts exist.
+   */
+  fetchOrderPayments(
+    orderId: string,
+    params?: { count?: number; skip?: number },
+  ): Promise<Result<RzpList<RzpPayment>>>;
 
   /**
    * Razorpay DOES reject a duplicate `reference_id`, the opposite of orders
@@ -65,6 +74,14 @@ export const createRazorpayClient = (
       method: 'GET',
       path: `/orders/${encodeURIComponent(orderId)}`,
       isWrite: false,
+    }),
+
+  fetchOrderPayments: (orderId, params) =>
+    request<RzpList<RzpPayment>>(creds, deps, {
+      method: 'GET',
+      path: `/orders/${encodeURIComponent(orderId)}/payments`,
+      isWrite: false,
+      query: { count: params?.count ?? 100, skip: params?.skip ?? 0 },
     }),
 
   createPaymentLink: (input) =>

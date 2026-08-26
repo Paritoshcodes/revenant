@@ -6,34 +6,69 @@
  *
  *   npx tsx scripts/smoke-checkout.mts <scenario>
  *
- * scenario defaults to insufficient_fund and must exist in
- * data/samples/link_map.json.
+ * scenario defaults to insufficient_fund and selects which test card to
+ * use, resolved from packages/contracts/data/decline-taxonomy.json (or
+ * 'success' for the baseline card that captures). It does NOT determine
+ * the outcome: the mock bank page's Success/Failure button does that
+ * (docs/DECISIONS.md), which is why attempt 1 below is driven as a
+ * failure and attempt 2 as a success regardless of which card was picked.
+ *
+ * Creates its OWN fresh payment link every run rather than reading one
+ * from a fixed sample file: a payment link can only ever be driven to a
+ * captured outcome once (docs/CHECKOUT-FLOW.md section 10, "A PAID link
+ * does not offer a payable checkout"), so a snapshot of pre-created links
+ * is single-use and goes stale the first time this script runs each one.
  */
-import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DECLINE_TAXONOMY, BASELINE_SUCCESS_CARD_DIGITS } from '@revenant/contracts';
 import { chromium } from 'playwright';
 
 import { openCheckout, attempt, capturePaymentIds } from '../src/browser/index.js';
+import { loadConfig } from '../src/config.js';
+import { createRazorpayClient } from '../src/razorpay/client.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..', '..');
 
 const scenario = process.argv[2] ?? 'insufficient_fund';
-const linkMap = JSON.parse(
-  readFileSync(join(repoRoot, 'data', 'samples', 'link_map.json'), 'utf8'),
-);
 
-const entry = linkMap[scenario];
-if (!entry) {
-  console.error(`unknown scenario '${scenario}'. available:`);
-  console.error(Object.keys(linkMap).join(', '));
+const resolveCard = (name: string): string => {
+  if (name === 'success') return BASELINE_SUCCESS_CARD_DIGITS;
+
+  const reason = DECLINE_TAXONOMY.find((r) => r.error_reason === name);
+  if (reason === undefined) {
+    console.error(`unknown scenario '${name}'. available:`);
+    console.error(['success', ...DECLINE_TAXONOMY.map((r) => r.error_reason)].join(', '));
+    process.exit(1);
+  }
+  const card = reason.test_cards[0];
+  if (card === undefined) {
+    console.error(
+      `scenario '${name}' has no test card: it only reproduces via a real user action ` +
+        `(docs/DECISIONS.md), not a card simulation. Try 'success' or another scenario.`,
+    );
+    process.exit(1);
+  }
+  return card.replace(/\s/g, '');
+};
+
+const card = resolveCard(scenario);
+
+const config = loadConfig();
+const client = createRazorpayClient(config.razorpay);
+
+const created = await client.createPaymentLink({
+  amount_paise: 49_900,
+  description: `smoke test (${scenario})`,
+});
+if (!created.ok) {
+  console.error('payment link creation failed:', created.error);
   process.exit(1);
 }
 
-const card = entry.card.replace(/\s/g, '');
-console.log(`scenario ${scenario}\ncard     ${card}\nurl      ${entry.short_url}\n`);
+console.log(`scenario ${scenario}\ncard     ${card}\nurl      ${created.value.short_url}\n`);
 
 const browser = await chromium.launch({ headless: false, slowMo: 300 });
 const context = await browser.newContext();
@@ -48,7 +83,7 @@ const opts = {
   screenshotDir: join(repoRoot, 'tmp'),
 };
 
-const opened = await openCheckout(page as never, entry.short_url, opts);
+const opened = await openCheckout(page as never, created.value.short_url, opts);
 if (!opened.ok) {
   console.error('openCheckout failed:', opened.error);
   await browser.close();

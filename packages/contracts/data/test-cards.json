@@ -1,0 +1,5 @@
+{
+  "source": "docs/CHECKOUT-FLOW.md section 8: documented domestic Visa debit test card, verified live against Razorpay test mode.",
+  "note": "Not a decline reason, so it does not belong in decline-taxonomy.json: this is the card that succeeds. The mock bank page's Success/Failure button, not the card number, determines the outcome in this account's test mode (docs/DECISIONS.md).",
+  "baseline_success_card": "4100 2800 0000 1007"
+}

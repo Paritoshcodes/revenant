@@ -26,6 +26,8 @@ import { chromium } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Browser } from 'playwright';
 
+import { BASELINE_SUCCESS_CARD_DIGITS } from '@revenant/contracts';
+
 import { attempt, capturePaymentIds, openCheckout } from '../../src/browser/index.js';
 import type { AttemptFlowResult } from '../../src/browser/index.js';
 import { loadConfig } from '../../src/config.js';
@@ -33,8 +35,8 @@ import { createRazorpayClient } from '../../src/razorpay/client.js';
 
 const RUN = process.env.RUN_CONTRACT_TEST === '1';
 
-/** Documented working test-mode card (docs/CHECKOUT-FLOW.md section 8). The bank page's Success/Failure button, not the card, determines the outcome (docs/DECISIONS.md). */
-const CARD_NUMBER = '4100280000001007';
+/** The bank page's Success/Failure button, not the card, determines the outcome (docs/DECISIONS.md). */
+const CARD_NUMBER = BASELINE_SUCCESS_CARD_DIGITS;
 
 describe.skipIf(!RUN)('checkout outcome contract: driver vs Razorpay API', () => {
   const config = loadConfig();

@@ -323,7 +323,10 @@ account. With the ceiling gone, the batch primitive moved back to payment
 links, which pass `npm run smoke` cleanly and repeatably, unlike the
 order-based surface's still-unexplained intermittent stall
 (docs/DECISIONS.md, "Payment-link quota lifted"). The order-based files
-are parked on disk, unused, not deleted.
+were subsequently DELETED, not parked: `src/browser/checkout-page.ts` and
+`src/recovery/create-batch.ts` no longer exist. Git history has them if the
+cap ever returns. The batch primitive is `src/recovery/create-link-batch.ts`
+on the hosted payment-link surface.
 
 Remaining headroom at time of the 2026-08-24 observation: 21 links still in
 `created` state, each supporting at least 6 attempts. Not meaningful now
