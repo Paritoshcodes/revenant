@@ -279,7 +279,15 @@ routing and registering it in Razorpay would silently fail.
 
 ## 2026-08-24 Test-account quota: payment links are capped, orders are not
 
-`POST /v1/payment_links` returns, after 30 links have ever been created:
+**UPDATE 2026-08-26: Razorpay lifted this cap on this account**, via the
+support ticket referenced below. Payment links are no longer capped.
+Everything below this line describes the constraint as it stood on
+2026-08-24 and is kept for the record, but the "Consequence for the batch
+primitive" section is superseded — see docs/DECISIONS.md, "2026-08-26
+Payment-link quota lifted; batch primitive moves back to payment links".
+The batch primitive now targets the hosted payment-link surface again.
+
+`POST /v1/payment_links` returned, after 30 links had ever been created:
 
     { "error": { "code": "RATE_LIMIT_EXCEEDED",
                  "description": "test mode limit of 30 reached for payment_link" } }
@@ -301,21 +309,25 @@ was 22 created, 6 paid, 1 cancelled, 1 expired.
 `POST /v1/orders` is NOT subject to this cap. Created successfully while
 payment links were fully exhausted.
 
-### Consequence for the batch primitive
+### Consequence for the batch primitive (superseded 2026-08-26)
 
-Building Layer 1 on payment links puts a hard ceiling of 30 on the whole
-project. Orders have no such cap, and the checkout flow works identically
-when Checkout is served from a local page against an order (verified
-earlier with scratch/checkout.html).
+This section described the situation as it stood on 2026-08-24 and is kept
+for the record; it is no longer the current design. At the time: building
+Layer 1 on payment links put a hard ceiling of 30 on the whole project, so
+the batch primitive moved to orders + a locally served checkout page
+(`src/browser/checkout-page.ts`, `src/recovery/create-batch.ts`), with
+payment links kept for one-off manual testing only.
 
-Preferred shape: orders + a locally served checkout page. Payment links stay
-useful for one-off manual testing but should not be the batch primitive.
+The support ticket mentioned here landed: Razorpay lifted the cap on this
+account. With the ceiling gone, the batch primitive moved back to payment
+links, which pass `npm run smoke` cleanly and repeatably, unlike the
+order-based surface's still-unexplained intermittent stall
+(docs/DECISIONS.md, "Payment-link quota lifted"). The order-based files
+are parked on disk, unused, not deleted.
 
-A support ticket has been raised to lift the limit; treat that as a
-convenience, not a dependency.
-
-Remaining headroom at time of writing: 21 links still in `created` state,
-each supporting at least 6 attempts.
+Remaining headroom at time of the 2026-08-24 observation: 21 links still in
+`created` state, each supporting at least 6 attempts. Not meaningful now
+that the cap itself is gone.
 
 ### Both rate-limit failures return HTTP 429
 

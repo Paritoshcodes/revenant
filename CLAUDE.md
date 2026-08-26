@@ -6,7 +6,9 @@ taking credit for payments that would have recovered anyway.
 
 ## Read before working
 
+- @docs/PLAN.md              thesis, what wins, day-by-day schedule
 - @docs/ARCHITECTURE.md      layers, services, policy grid, guardrails, audit
+- @docs/API-BEHAVIOUR.md     Razorpay API behaviour, verified live
 - @docs/EXPERIMENT-PROTOCOL.md  FROZEN experiment parameters
 - @docs/DECISIONS.md         observed API behaviour, why things are the way they are
 - @docs/CHECKOUT-FLOW.md     Razorpay checkout selectors for Playwright

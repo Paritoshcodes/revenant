@@ -733,3 +733,237 @@ user action, not a card simulation. No TypeScript or Python test asserted
 an exact count of two observed reasons, so none needed fixing; the
 `decline-taxonomy.json` note and `is_observed_in_test_mode`'s Python
 docstring, which did assert "two", were updated to "three".
+
+## Build log entry 7: waitForValueStable auto-waits on a destroyed element
+
+Found by a live run after a session that added `waitForValueStable()` to fix
+a React state-timing issue. 245 tests passed.
+
+`input[name="contact"]` is REMOVED from the DOM the moment its value
+registers and the checkout advances to the payment-method screen (the header
+becomes "Using as +91 90000 90000"). `waitForValueStable` fills the field and
+then polls `inputValue()` until the value stops changing, so it auto-waits
+30s for an element that was destroyed by its own fill.
+
+This is entry 6 repeating: an auto-waiting Playwright call on a TRANSIENT
+element. The fix written after entry 6 reintroduced the same class of bug in
+a new place.
+
+Standing rule, now twice earned: inside any poll or stabilisation loop,
+probe existence with `count()` first and never call an auto-waiting method
+(`textContent`, `inputValue`, `waitFor`) on an element that can disappear.
+
+### What was NOT the problem
+
+A session had concluded that PerimeterX / hCaptcha risk-scoring was gating
+the flow, and that only a guessed delay or an adversarial workaround would
+clear it. Verified live: the hosted checkout renders and advances normally,
+the method list appears from the fill alone, and nothing blocks. The
+inconsistent pass/fail pattern is explained by the destroyed-element race,
+not by bot detection.
+
+Keep this: the refusal to build around bot detection was correct regardless.
+But the diagnosis was wrong, and it was reached by reasoning from a pattern
+across runs rather than by inspecting the DOM.
+
+### Selector status, verified 2026-08-26
+
+Checkout build hash changed (f2a87944... -> 6afcc725...), so Razorpay did
+ship an update, but the flow is intact:
+
+    input[name="contact"]              present on load, DESTROYED on fill
+    [data-testid="card"]               present after the fill
+    [data-testid="bottom-cta-button"]  present, STILL CORRECT
+    [data-testid="add-card-cta"]       NOT present on the method screen
+
+The rename to `add-card-cta` reported in that session belongs to a different
+screen (likely card entry), not the method list. `bottom-cta-button` was
+never stale on this screen.
+
+A visible "Contact details ... Continue" screen now renders on load, but
+filling the field auto-advances without clicking Continue; the click is a
+no-op. Do not add a Continue step.
+
+## Build log entry 8: the order-page "freeze" was a click on a 0x0 element
+
+Root-caused by live DOM inspection 2026-08-26, not by reasoning from run
+patterns. The previous session's diagnosis was wrong in both directions.
+
+### What is actually true
+
+BOTH buttons exist SIMULTANEOUSLY on the card-entry screen, on BOTH
+integration surfaces. They are not per-surface variants:
+
+    [data-test-id="add-card-cta"]     hyphenated attr, 0x0, offsetParent null,
+                                      elementFromPoint at its centre = BODY
+    [data-testid="bottom-cta-button"] 346x44, visible, hit-tests to itself
+
+`add-card-cta` is a collapsed element. Clicking it does nothing: no dialog,
+no popup, no DOM change. That is exactly the reported "freeze", and it
+explains the screenshot showing a normal ready-to-submit state, because the
+click never landed.
+
+The intermittency is which element a combined selector happens to match as
+the DOM settles.
+
+Proven: clicking `[data-testid="bottom-cta-button"]` on the order-based
+local page produced `dialog-TokenisationBenefits` and
+`button[name="pay_without_saving_card"]`, identical to the hosted flow.
+
+### Corrections to the previous session
+
+- The combined selector added to "support both surfaces" is the CAUSE of the
+  freeze, not a fix. Remove it. `bottom-cta-button` alone is correct on both.
+- `add-card-cta` is not an order-page variant of the submit button. It is a
+  collapsed element present on both surfaces and must never be a click
+  target.
+- Note the attribute differs too: `data-test-id` (hyphenated) versus
+  `data-testid`. A selector written for one does not match the other, which
+  is how a 0x0 element became a click target unnoticed.
+- The order-based path is NOT blocked and does not need shelving. It works.
+
+### Standing rule
+
+Never select a click target by attribute alone when duplicates can exist.
+Require visibility: a non-zero bounding box and a hit test that returns the
+element itself. Playwright's actionability checks do this for `.click()`;
+any JS-dispatched click bypasses them and must check explicitly.
+
+## Correction to build log entry 8: it does NOT alternate, and is not "both surfaces simultaneously"
+
+Entry 8's central claim — "BOTH buttons exist SIMULTANEOUSLY on the
+card-entry screen, on BOTH integration surfaces... not per-surface
+variants" — does not hold up. Re-verified 2026-08-26 with a direct
+bounding-box + hit-test dump of both candidates, across 5 FRESH page loads
+on each surface, no combined selector involved:
+
+    hosted payment-link (5/5 loads):
+      bottom-cta-button   real, visible, ~216x44, hits itself
+      add-card-cta        count=1, box=null, isVisible=false, offsetParent
+                          null, hits a DIV, not itself
+
+    order-based/embedded (5/5 loads):
+      bottom-cta-button   count=0 — DOES NOT EXIST on this surface at all
+      add-card-cta        real, visible, 390x44, hits itself
+
+Zero variation across 10 total loads. This is a deterministic PER-SURFACE
+split, not randomness and not two simultaneous elements on one screen.
+Entry 8's own supporting observation ("clicking bottom-cta-button on the
+order-based local page produced dialog-TokenisationBenefits") does not
+reproduce: `bottom-cta-button` has zero matches on that surface in every
+one of 5 fresh loads just run. That single earlier observation was very
+likely made against the hosted surface while believing it was the
+order-based one, or against a since-changed build — either way it does not
+hold now and should not be trusted over this reproducible result.
+
+Consequence: the FIRST session's original finding (add-card-cta is the
+real, correct button on the order-based page; bottom-cta-button is the
+real, correct button on the hosted page; these are per-surface variants of
+the same submit control) was right. Entry 8's "correction" of it was
+itself the wrong diagnosis, reached from one click succeeding once rather
+than from bounding boxes on both surfaces.
+
+This does not change the selector. `[data-testid="bottom-cta-button"]:visible,
+[data-test-id="add-card-cta"]:visible` (src/browser/selectors.ts) is
+correct either way: a per-surface split and a per-session coin flip both
+call for the same fix, letting Playwright's own visibility engine pick
+whichever candidate is actually there and actually visible, rather than
+hardcoding an assumption about which surface is in play.
+
+The standing rule from entry 8 is unaffected and, if anything, reinforced:
+a raw bounding-box + hit-test dump, repeated across fresh loads, is what
+actually settles a DOM-shape question. A single successful click is not
+evidence about what would happen on a different surface, and "it worked
+once" was believed here for two sessions running before a repeat,
+multi-load dump caught it. Same rule as always: scripts collect evidence,
+and a claim that generalizes from one observation to "on both surfaces"
+needs the second surface actually measured, not assumed.
+
+## 2026-08-26 Payment-link quota lifted; batch primitive moves back to payment links
+
+Razorpay has lifted the test-mode 30-link cap on this account (the support
+ticket referenced in API-BEHAVIOUR.md's 2026-08-24 quota entry). Payment
+links are no longer capped, which removes the entire reason the batch
+primitive moved to orders + a locally-served checkout page in the first
+place.
+
+**Consequence: the batch primitive moves back to the hosted payment-link
+surface.** It is the surface that has passed `npm run smoke` cleanly and
+repeatably across this whole project, including today. The order-based
+surface, meanwhile, still has an unexplained intermittent stall (submit
+click succeeds, the save-card dialog / popup never appears, and — per live
+investigation — with no failed request, no stalled request, and no console
+error at the moment it happens; ruled out as the destroyed-contact-field
+bug, the collapsed-decoy-click bug, and diagnosable network failure in
+turn). With the quota justification gone, there is no reason to keep
+shipping a real, unresolved intermittency in the batch primitive when a
+proven-reliable alternative exists.
+
+**`src/browser/checkout-page.ts` and `src/recovery/create-batch.ts` are
+parked, not deleted.** Both are correct, tested code for a real, working
+surface (order-based checkout does work — most runs of it succeed; see
+prior entries) that simply is not the one the batch primitive uses now.
+Deleting them would throw away a second, independently-verified execution
+path against live Razorpay test mode, and the intermittent stall on that
+surface is still unexplained, meaning it might resurface in a form that
+affects the hosted surface too, in which case this work is where that
+investigation resumes. Left on disk, unused, with this entry as the
+record of why.
+
+**Not yet fully understood: why the order-based surface renders different
+markup at all** (see the correction entry above — `bottom-cta-button` does
+not exist there, only `add-card-cta` does, deterministically). The
+`:visible`-scoped combined selector in `src/browser/selectors.ts` handles
+this correctly regardless, and is left as-is: it is still exercised by
+whichever code drives the order-based surface, parked or not.
+
+## 2026-08-26 Repo cleanup, and the order path deleted
+
+Razorpay lifted the payment-link cap on this account. That removed the only
+reason the order-based local checkout page existed, so it was deleted rather
+than parked: unused code in a public repo is noise, and git history has it if
+the constraint ever returns.
+
+Deleted: `src/browser/checkout-page.ts`, `src/recovery/create-batch.ts`, the
+`scratch/checkout.html` prototype, ~20 one-off debug scripts and their
+screenshots from the submit-stall investigation, `scripts/webhook-receiver.mts`
+(superseded by the real handler in `src/webhooks/`), `scripts/frames.mts`
+(superseded by `recon.mts`), the taxonomy-era `scripts/capture.py` and
+`scripts/make_links.py`, a stray `p.json`, and a nested
+`apps/gateway/apps/gateway/tests/contract` directory created by a bad path.
+
+Kept and moved to `apps/gateway/scripts/recon/`: `recon.mts`, `probe-api.mts`,
+`probe-open-questions.mts`, `probe-payments.mts`. These produced everything in
+API-BEHAVIOUR.md and CHECKOUT-FLOW.md and are cited by name in this log. A
+reader who sees "verified live" and can find the script that verified it is
+better served than a tidier tree.
+
+`apps/gateway/scripts/` is now four operational entries: `migrate.mjs`,
+`smoke-checkout.mts`, `webhooks-up.mts`, and `recon/`.
+
+254 tests pass after the deletions; no dangling imports.
+
+## UNRESOLVED CONTRADICTION: the two submit buttons
+
+Two live observations conflict and neither should be treated as settled.
+
+Entry 8 (this log, 2026-08-26 morning) recorded, from a direct
+bounding-box dump on the ORDER-BASED local page: `add-card-cta` at 0x0 with
+`offsetParent` null, AND `bottom-cta-button` at 346x44 visible and
+hit-testing to itself. A click on `bottom-cta-button` on that same page then
+produced `dialog-TokenisationBenefits` and `pay_without_saving_card`.
+
+A later session reported, from 5 fresh loads on the same surface, that
+`bottom-cta-button` does not exist at all (count=0) and `add-card-cta` is the
+real 390x44 button.
+
+Both claim direct measurement. They cannot both describe the same page state.
+Possible explanations not investigated: the checkout renders differently
+depending on which stage the dump was taken at, or checkout.js is served
+live from Razorpay's CDN and changed between the two runs.
+
+This is NOT resolved and must not be cited as fact in either direction. It
+does not need resolving: the order-based path is deleted, and the
+`:visible`-scoped selector is correct under either explanation because it
+defers to Playwright's own actionability check rather than to our belief
+about which button is real.

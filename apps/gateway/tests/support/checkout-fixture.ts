@@ -86,6 +86,18 @@ export interface CheckoutFixtureConfig {
   readonly suppressOutcome?: boolean;
   /** The popup opens, but its /authenticate request never fires: proves a genuine capture timeout surfaces. */
   readonly suppressPaymentIdCapture?: boolean;
+  /**
+   * Models `[data-test-id="add-card-cta"]`: a collapsed (0x0) decoy element
+   * present on the real page alongside the real submit button
+   * (docs/DECISIONS.md, Build log entry 8). The submit selector resolves —
+   * `count()` sees it — but a real Playwright `.click()` performs its own
+   * actionability check (non-zero bounding box, a hit test resolving to
+   * the element itself) and fails on an element like this rather than
+   * clicking through to whatever sits underneath it. Set true to prove the
+   * driver surfaces that failure cleanly instead of hanging or silently
+   * treating a no-op click as a successful submit.
+   */
+  readonly submitTargetCollapsed?: boolean;
 }
 
 export interface CheckoutFixture {
@@ -120,6 +132,16 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
   };
   let lastGotoOptions: { timeout?: number; waitUntil?: string } | undefined;
   const requestHandlers: Array<(request: RequestLike) => void> = [];
+
+  // The popup does not exist until it actually opens: real Checkout only
+  // opens it once any save-card dialog has been dismissed, so this must
+  // be a real causal dependency, not two independently-timed fakes left
+  // to race each other arbitrarily. `waitForEvent('popup')` is armed
+  // (called) before submit, per the real driver, so it always queues a
+  // resolver here; `openPopupNow` is what actually fulfils it, whenever
+  // that turns out to be.
+  let popupReady: PageLike | null = null;
+  let popupResolvers: Array<(page: PageLike) => void> = [];
 
   const record = (label: string): void => {
     calls.push(label);
@@ -197,8 +219,27 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
         if (!stageAtLeast('cardSelected')) {
           throw new Error('bottom-cta-button not reachable: card fields were never filled');
         }
+        if (config.submitTargetCollapsed) {
+          // Real Playwright: the element exists (count() > 0) but is 0x0
+          // with a hit test resolving elsewhere, so .click() times out
+          // waiting for it to become actionable rather than clicking
+          // through. Modelled as an immediate rejection here rather than
+          // an actual 30s wait, since the point under test is that the
+          // driver surfaces this failure, not how long Playwright takes
+          // to give up.
+          throw new Error(
+            `locator.click: Timeout exceeded: element is not visible (0x0 bounding box), cannot click ${selector}`,
+          );
+        }
         world.stage = 'submitted';
-        if (config.saveCardPromptAppears) world.saveCardPromptVisible = true;
+        popupReady = null; // a fresh popup for this attempt
+        if (config.saveCardPromptAppears) {
+          // The popup does not exist yet: real Checkout only opens it
+          // once this dialog is dismissed.
+          world.saveCardPromptVisible = true;
+        } else {
+          openPopupNow();
+        }
         return;
       }
       if (selector === SELECTORS.declineSaveCard) {
@@ -206,6 +247,7 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
           throw new Error('pay_without_saving_card not visible: no save-card prompt is showing');
         }
         world.saveCardPromptVisible = false;
+        openPopupNow();
         return;
       }
       throw new Error(`unexpected click on ${selector}`);
@@ -234,6 +276,20 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
     },
     count: async () => {
       record(`frame.count(${selector})`);
+      // input[name="contact"] is removed from the DOM the instant its
+      // value registers and checkout advances to the method screen
+      // (docs/DECISIONS.md, Build log entry 7) — modelled here as leaving
+      // 'loaded' the moment fill() resolves, exactly when it happens live.
+      if (selector === SELECTORS.contact) {
+        return world.stage === 'loaded' ? 1 : 0;
+      }
+      if (
+        selector === SELECTORS.cardNumber ||
+        selector === SELECTORS.cardExpiry ||
+        selector === SELECTORS.cardCvv
+      ) {
+        return stageAtLeast('cardSelected') ? 1 : 0;
+      }
       if (selector === SELECTORS.retrySurface) {
         if (frameIsDetached()) throw detached();
         return retrySurfaceCount();
@@ -243,6 +299,19 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
         return headingText() !== null ? 1 : 0;
       }
       throw new Error(`unexpected count on ${selector}`);
+    },
+    inputValue: async () => {
+      record(`frame.inputValue(${selector})`);
+      if (selector === SELECTORS.contact && world.stage !== 'loaded') {
+        // A regression to calling inputValue() without checking count()
+        // first must fail loudly here too, the same way it would hang
+        // against the real, destroyed element (docs/DECISIONS.md, Build
+        // log entry 7).
+        throw new Error(`${selector} is not attached: destroyed once its value registered`);
+      }
+      const value = world.fieldValues[selector];
+      if (value === undefined) throw new Error(`unexpected inputValue on ${selector}`);
+      return value;
     },
     textContent: async (options) => {
       record(`frame.textContent(${selector})`);
@@ -271,7 +340,7 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
     const fail = async (): Promise<never> => {
       throw new Error(`no frame matching ${documentLabel}: cannot locate ${elementSelector}`);
     };
-    return { fill: fail, click: fail, waitFor: fail, count: fail, textContent: fail };
+    return { fill: fail, click: fail, waitFor: fail, count: fail, inputValue: fail, textContent: fail };
   };
 
   // -- popup ------------------------------------------------------------------
@@ -320,6 +389,31 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
     },
   };
 
+  /**
+   * The popup actually becomes available: either right after submit (no
+   * save-card dialog to wait on) or right after that dialog is dismissed.
+   * Fires the `/authenticate` request on a later macrotask, never
+   * synchronously: proves the driver's wait-for-growth is load-bearing,
+   * not incidentally already satisfied (docs/CHECKOUT-FLOW.md section 11).
+   */
+  const openPopupNow = (): void => {
+    world.popupStage = 'intermediate';
+    world.popupsOpened += 1;
+    const paymentIdSegment = `Ttest${world.popupsOpened}`;
+    if (!config.suppressPaymentIdCapture) {
+      setTimeout(() => {
+        for (const handler of requestHandlers) {
+          handler({
+            url: () => `https://api.razorpay.com/v1/payments/${paymentIdSegment}/authenticate`,
+          });
+        }
+      }, 0);
+    }
+    popupReady = popupPage;
+    const resolvers = popupResolvers.splice(0, popupResolvers.length);
+    for (const resolve of resolvers) resolve(popupPage);
+  };
+
   // -- parent page --------------------------------------------------------------
 
   const pageLocator = (selector: string): LocatorLike => {
@@ -329,7 +423,7 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
           `page.locator(${selector}) should never be called: only .Payment-Completed lives on the parent`,
         );
       };
-      return { fill: fail, click: fail, waitFor: fail, count: fail, textContent: fail };
+      return { fill: fail, click: fail, waitFor: fail, count: fail, inputValue: fail, textContent: fail };
     }
     return {
       fill: async () => {
@@ -344,6 +438,9 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
       count: async () => {
         record(`page.count(${selector})`);
         return parentPaymentCompletedCount();
+      },
+      inputValue: async () => {
+        throw new Error('div.Payment-Completed is not an input');
       },
       textContent: async () => {
         throw new Error('div.Payment-Completed textContent is not modelled');
@@ -377,22 +474,14 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
     },
     waitForEvent: async (event) => {
       record(`waitForEvent(${event})`);
-      world.popupStage = 'intermediate';
-      world.popupsOpened += 1;
-      const paymentIdSegment = `Ttest${world.popupsOpened}`;
-      if (config.suppressPaymentIdCapture) return popupPage;
-      // Fires on a LATER macrotask, never synchronously: proves the
-      // driver's wait-for-growth is load-bearing, not incidentally
-      // already satisfied by the time it checks
-      // (docs/CHECKOUT-FLOW.md section 11).
-      setTimeout(() => {
-        for (const handler of requestHandlers) {
-          handler({
-            url: () => `https://api.razorpay.com/v1/payments/${paymentIdSegment}/authenticate`,
-          });
-        }
-      }, 0);
-      return popupPage;
+      // Armed before submit, per the real driver: the popup may not
+      // exist yet (a save-card dialog can still be pending), so this
+      // must be a real listener, not an assumption that it is already
+      // there. openPopupNow() is what actually fulfils it.
+      if (popupReady !== null) return popupReady;
+      return new Promise<PageLike>((resolve) => {
+        popupResolvers.push(resolve);
+      });
     },
     waitForURL: () => {
       throw new Error('page.waitForURL should not be called: only the popup navigates');

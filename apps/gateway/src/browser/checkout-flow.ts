@@ -34,6 +34,18 @@
  * timeout all become a typed Failure, with a screenshot taken alongside
  * for debugging (best-effort: a failed screenshot never masks the real
  * error).
+ *
+ * Every click in this file goes through `LocatorLike.click()`, never a
+ * JS-dispatched click (`evaluate(() => el.click())` or similar). A real
+ * Playwright `.click()` performs its own actionability check — non-zero
+ * bounding box, a hit test that resolves to the element itself, not
+ * something covering it — before the click happens; a JS-dispatched click
+ * bypasses all of that and fires regardless. `data-test-id="add-card-cta"`
+ * is a live example of why this matters: a collapsed (0x0), unhittable
+ * decoy element that coexists with the real submit button on every surface
+ * (docs/DECISIONS.md, Build log entry 8). Targeting it through `.click()`
+ * fails loudly; targeting it through a JS-dispatched click would have
+ * "succeeded" while doing nothing, which is the harder bug to catch.
  */
 import { err, ok } from '@revenant/contracts';
 import type { Failure, Result } from '@revenant/contracts';
@@ -43,21 +55,76 @@ import type {
   AttemptFlowOptions,
   AttemptFlowResult,
   FrameLocatorLike,
+  LocatorLike,
   PageLike,
   PaymentIdCapture,
 } from './types.js';
 
+/** A ceiling every individual action waits up to, per docs/CHECKOUT-FLOW.md's "timeout >= 30s". Never the mechanism deciding between two real conditions — see the save-card/popup race below. */
 const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_SAVE_CARD_GUARD_MS = 5_000;
 const DEFAULT_EXPIRY = '12/30';
 const DEFAULT_CVV = '123';
-/** Generic Razorpay test-mode contact number; not a real subscriber. */
-const DEFAULT_CONTACT = '9999999999';
+/** Values that work (docs/CHECKOUT-FLOW.md section 8): verified test-mode contact, not invented. */
+const DEFAULT_CONTACT = '9000090000';
 /** Failures settle in ~6s, captures in ~15s (docs/CHECKOUT-FLOW.md section 6). */
 const POLL_INTERVAL_MS = 500;
 
 const realSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Bounds a probe against an element that might vanish underneath it.
+ * Playwright's `inputValue()`/`textContent()`/etc. auto-wait for the
+ * element to be attached, using their own default timeout (30s) when none
+ * is given — on an element that is gone and never coming back, that blocks
+ * for the full timeout instead of failing this one check (docs/DECISIONS.md,
+ * Build log entry 6, repeated in entry 7 for `inputValue`).
+ */
+const PROBE_TIMEOUT_MS = 250;
+
+/** Interval between value-stability polls. Not a guess at total wait time — only how finely to sample it. */
+const VALUE_STABLE_POLL_MS = 40;
+
+/**
+ * count() first, always: an element that has been removed from the DOM
+ * (docs/DECISIONS.md, Build log entry 7 — `input[name="contact"]` is
+ * destroyed the instant its value registers and checkout advances) must
+ * never reach an auto-waiting call. `count()` itself never waits, so it is
+ * safe to call on anything; a short `timeout` on the read after it is a
+ * second line of defence against the gap between the two calls.
+ */
+const readValueIfPresent = async (locator: LocatorLike): Promise<string | null> => {
+  if ((await locator.count()) === 0) return null;
+  try {
+    return await locator.inputValue({ timeout: PROBE_TIMEOUT_MS });
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * fill() resolving proves Playwright dispatched the input event; it says
+ * nothing about whether the checkout app's own React state — including any
+ * reformat, or the element being replaced entirely once the app reacts to
+ * it — has caught up before the next action fires. Acting on stale internal
+ * state is exactly what left Continue clicking into a no-op when every
+ * field was filled and Continue clicked within the same tick. Poll the
+ * field's own displayed value until two consecutive reads agree, or until
+ * the field itself disappears — the field vanishing IS the app having
+ * caught up and moved on, not a failure to wait for.
+ */
+const waitForValueStable = async (locator: LocatorLike, timeoutMs: number): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  let previous = await readValueIfPresent(locator);
+  if (previous === null) return;
+  while (Date.now() < deadline) {
+    await realSleep(VALUE_STABLE_POLL_MS);
+    const current = await readValueIfPresent(locator);
+    if (current === null) return;
+    if (current === previous && current.length > 0) return;
+    previous = current;
+  }
+};
 
 const toFailure = (cause: unknown, context: string): Failure => ({
   kind: 'upstream',
@@ -118,6 +185,7 @@ export const openCheckout = async (
 
     const frame = checkoutFrame(page);
     await frame.locator(SELECTORS.contact).fill(contact, { timeout });
+    await waitForValueStable(frame.locator(SELECTORS.contact), timeout);
 
     // The payment method list, including [data-testid="card"], does not
     // exist until contact is filled. Wait for it rather than assuming it.
@@ -129,15 +197,6 @@ export const openCheckout = async (
     return err(toFailure(cause, `openCheckout ${shortUrl}`));
   }
 };
-
-/**
- * Bounds the heading's textContent() probe to a short budget. Playwright's
- * real textContent() auto-waits for the element to be attached; on the
- * failure path the heading disappears around t+6s, and without this an
- * unguarded call blocks for Playwright's full default timeout (30s)
- * instead of failing this one tick (docs/DECISIONS.md, Build log entry 6).
- */
-const PROBE_TIMEOUT_MS = 250;
 
 /**
  * One look at the current state, every probe inside it non-blocking so one
@@ -217,7 +276,6 @@ export const attempt = async (
   options: AttemptFlowOptions = {},
 ): Promise<Result<AttemptFlowResult>> => {
   const timeout = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const saveCardGuardMs = options.saveCardGuardMs ?? DEFAULT_SAVE_CARD_GUARD_MS;
   const expiry = options.expiry ?? DEFAULT_EXPIRY;
   const cvv = options.cvv ?? DEFAULT_CVV;
   const sleep = options.sleep ?? realSleep;
@@ -232,14 +290,31 @@ export const attempt = async (
     // fill() clears before typing; a native setter or type() would append
     // onto whatever a previous attempt in this session left behind
     // (docs/CHECKOUT-FLOW.md section 7: card fields retain their values
-    // across a retry).
+    // across a retry). Each fill is followed by a real wait for the
+    // field's own displayed value to settle before the next one starts:
+    // filling three fields and clicking Continue inside the same tick was
+    // exactly what left Continue acting on state the app had not caught
+    // up to yet.
     await frame.locator(SELECTORS.cardNumber).fill(cardNumber, { timeout });
+    await waitForValueStable(frame.locator(SELECTORS.cardNumber), timeout);
     await frame.locator(SELECTORS.cardExpiry).fill(expiry, { timeout });
+    await waitForValueStable(frame.locator(SELECTORS.cardExpiry), timeout);
     await frame.locator(SELECTORS.cardCvv).fill(cvv, { timeout });
+    await waitForValueStable(frame.locator(SELECTORS.cardCvv), timeout);
 
     // Registered before the click that can trigger it: waitForEvent must
     // start listening before the popup opens, or the event can be missed.
     const popupPromise = page.waitForEvent('popup', { timeout });
+    // A no-op handler attached immediately, separate from the real one
+    // attached later in the race below: if the submit click (or anything
+    // else between here and the race) throws first, this function returns
+    // via the catch block below without ever reaching that race, leaving
+    // popupPromise's own 30s timer to fire later with no handler at all —
+    // a genuinely unhandled rejection that crashes the process, not one
+    // this function's try/catch can see. Node only needs one handler
+    // attached to consider a promise handled; this one exists purely to
+    // guarantee that, regardless of which code path runs.
+    popupPromise.catch(() => undefined);
 
     // Recorded before submitting, per docs/CHECKOUT-FLOW.md section 11:
     // reading the captured list's last element immediately after can
@@ -250,17 +325,41 @@ export const attempt = async (
 
     // The tokenisation (save-card) prompt is conditional: present on the
     // first attempt of a session, absent on a retry, independent of which
-    // card is used. Guard it rather than assume either way.
+    // card is used (docs/CHECKOUT-FLOW.md section 3). Rather than
+    // guessing how long it takes to render if it is going to, race it
+    // directly against the popup opening: whichever genuinely happens
+    // first tells us what is actually going on, so there is no duration
+    // to get wrong. The dialog probe never rejects the race by itself
+    // (matching how the outcome poll avoids a raw Promise.race,
+    // docs/DECISIONS.md Build log entry 3): if it never appears, this
+    // side simply loses to the popup, which is the fast path on a retry.
     const saveCardButton = frame.locator(SELECTORS.declineSaveCard);
-    const saveCardPromptAppeared = await saveCardButton
-      .waitFor({ state: 'visible', timeout: saveCardGuardMs })
+    const dialogAppeared = saveCardButton
+      .waitFor({ state: 'visible', timeout })
       .then(() => true)
       .catch(() => false);
-    if (saveCardPromptAppeared) {
+
+    // Neither side may reject the race itself (a raw Promise.race settles
+    // on the FIRST settlement, including a rejection — the same failure
+    // mode this project already fixed once for the outcome probes,
+    // docs/DECISIONS.md Build log entry 3): if popupPromise's own timeout
+    // fires before the dialog probe resolves, that rejection must not be
+    // allowed to win the race and blow past the decision below.
+    const raceWinner = await Promise.race([
+      dialogAppeared.then((appeared) => (appeared ? ('dialog' as const) : ('neither' as const))),
+      popupPromise.then(
+        () => 'popup' as const,
+        () => 'neither' as const,
+      ),
+    ]);
+
+    if (raceWinner === 'dialog') {
       await saveCardButton.click({ timeout });
     }
 
-    // A NEW BROWSER WINDOW, not a same-tab navigation.
+    // A NEW BROWSER WINDOW, not a same-tab navigation. Already resolved
+    // if the race settled on it above; if the dialog needed dismissing
+    // first, this is what actually waits for the popup to open now.
     const popup = await popupPromise;
     await capture.waitForGrowth(idsBefore, timeout);
     const ids = capture.list();

@@ -11,6 +11,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/src/index.js",
     "test": "vitest run",
+    "test:contract": "vitest run --config vitest.contract.config.ts",
     "db:migrate": "node scripts/migrate.mjs",
     "webhooks": "tsx scripts/webhooks-up.mts",
     "smoke": "tsx scripts/smoke-checkout.mts"

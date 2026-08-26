@@ -40,6 +40,10 @@ describe('openCheckout', () => {
       `page.count(${SELECTORS.paymentCompleted})`,
       `frameLocator(${FRAME_SELECTOR})`,
       `frame.fill(${SELECTORS.contact}, 9000000000)`,
+      // The field is destroyed the instant fill() resolves (Build log
+      // entry 7): waitForValueStable's count()-first guard sees it already
+      // gone and returns immediately, never reaching inputValue().
+      `frame.count(${SELECTORS.contact})`,
       `frame.waitFor(${SELECTORS.cardMethod})`,
     ]);
   });
@@ -362,8 +366,16 @@ describe('fixture fidelity: the five build-log bugs are structurally catchable',
 
   it('2. payment id capture: the id is only available after waiting for growth, never synchronously', async () => {
     const fixture = openedFixture();
-    const before = fixture.capture.list().length;
+    const frame = fixture.page.frameLocator(FRAME_SELECTOR);
+    // Drive far enough for the popup to actually become available (real
+    // Checkout does not open it until submit; the fixture's own popup
+    // only exists once submit has run), so this is a genuine timing
+    // check, not one that only holds because nothing triggered it yet.
+    await frame.locator(SELECTORS.cardMethod).click();
+    await frame.locator(SELECTORS.cardNumber).fill('4111111111111111');
+    await frame.locator(SELECTORS.submit).click();
 
+    const before = fixture.capture.list().length;
     const popup = await fixture.page.waitForEvent('popup');
     // The instant the popup resolves, nothing has been captured yet: the
     // fixture fires the authenticate request on a later macrotask, just
@@ -456,5 +468,22 @@ describe('fixture fidelity: a sixth bug (Build log entry 6), the fixture mismode
     await expect(heading.count()).resolves.toBe(0);
     // A correct driver stops here for this tick; it never calls
     // textContent() on an element count() just reported as absent.
+  });
+});
+
+describe('fixture fidelity: an eighth bug (Build log entry 8), a collapsed decoy click target', () => {
+  it('surfaces a clean failure rather than hanging or silently succeeding when the submit target is not actionable', async () => {
+    // [data-test-id="add-card-cta"] coexists with the real submit button
+    // on every surface, 0x0 and unhittable. A real Playwright .click()
+    // fails on an element like this rather than clicking through to
+    // whatever sits underneath. attempt() must convert that into a typed
+    // Failure like any other Playwright error, not hang or report success.
+    const fixture = openedFixture({ submitTargetCollapsed: true });
+
+    const result = await driveAttempt(fixture, '4100280000001007', 'success');
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toMatch(/not visible|0x0/);
   });
 });

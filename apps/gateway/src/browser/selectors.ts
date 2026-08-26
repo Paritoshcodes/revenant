@@ -50,7 +50,25 @@ export const SELECTORS = {
   cardNumber: 'input[name="card.number"]',
   cardExpiry: 'input[name="card.expiry"]',
   cardCvv: 'input[name="card.cvv"]',
-  submit: '[data-testid="bottom-cta-button"]',
+  /**
+   * Two attributes have each been verified live as BOTH "the real,
+   * visible submit button" and "a collapsed 0x0 decoy", on different runs
+   * against the same order-based surface (docs/DECISIONS.md, Build log
+   * entry 8 found `bottom-cta-button` real and `add-card-cta` collapsed;
+   * a direct re-query minutes later found the reverse — `bottom-cta-button`
+   * absent entirely, `add-card-cta` real and visible, 371x44). Razorpay's
+   * checkout.js is fetched live from their CDN and its markup is not
+   * stable across sessions.
+   *
+   * Given that, hardcoding either attribute alone is a coin flip. Playwright's
+   * `:visible` pseudo-class computes actual visibility (non-zero bounding
+   * box, not display:none/visibility:hidden) at query time, so this
+   * selector defers the choice to whichever candidate is really visible
+   * in the current DOM, however many candidates exist. This still relies
+   * on `.click()`'s native actionability check as the last line of
+   * defence, not on `:visible` alone, in case a third variant appears.
+   */
+  submit: '[data-testid="bottom-cta-button"]:visible, [data-test-id="add-card-cta"]:visible',
   declineSaveCard: 'button[name="pay_without_saving_card"]',
   bankSuccess: 'button[data-val="S"]',
   bankFailure: 'button[data-val="F"]',

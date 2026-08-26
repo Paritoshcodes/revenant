@@ -34,6 +34,13 @@ api.sardine.ai (fraud collection) and js.stripe.com.
                        input[name="save"]        (checkbox, UNCHECKED default)
                        [data-testid="save-card-checkbox"], nav-back
 
+`input[name="contact"]` is REMOVED from the DOM the instant its value
+registers and checkout advances to the method screen — not merely hidden,
+GONE (verified live 2026-08-26, section 13). Any wait against this element
+after filling it (an auto-waiting `inputValue()`, `textContent()`, a second
+`waitFor`) must check `count()` first, or it blocks for that call's full
+timeout against an element that is never coming back.
+
 Never assume an element exists before the stage that creates it. Wait for
 [data-testid="card"] after filling contact, and for card.number after
 clicking the card method.
@@ -391,3 +398,56 @@ Setting the native value to '' with an `input` event, then setting the new
 value, works: "4100 2800 0000 1007" became "5555 5100 0008 1006" cleanly.
 Playwright's `fill()` does the same. A bare setter without the clear step
 would corrupt the field.
+
+## 13. Contact field is destroyed on fill; checkout build hash changed, verified 2026-08-26
+
+Checkout's build hash changed (`f2a87944...` -> `6afcc725...`) between the
+original 2026-08-24 reconnaissance and this check — Razorpay shipped an
+update to the live CDN bundle — but the flow itself is intact and the
+contents of this file otherwise still hold.
+
+**`input[name="contact"]` is REMOVED from the DOM, not merely covered,**
+the moment its value registers and the header advances to
+"Using as +91 90000 90000". A driver that fills this field and then makes
+any auto-waiting call against the same locator (`inputValue()`,
+`textContent()`, a second `waitFor`) is calling into an element that no
+longer exists and will never return; the call blocks for that method's full
+default timeout (30s) rather than failing fast. Check `count()` first,
+always, before touching this element again after filling it. This is the
+same failure shape as section 6/DECISIONS.md Build log entry 6
+(`textContent()` auto-waiting on the failure-path heading), recurring in a
+new place: any Playwright call that auto-waits is unsafe on any element
+whose disappearance is a NORMAL, expected outcome, not just on elements
+already known to be transient.
+
+**A visible "Contact details ... Continue" screen renders on load,** but
+filling the contact field auto-advances the flow by itself — clicking the
+screen's own "Continue" button is a no-op once that has happened. Do not
+add a step that clicks it.
+
+**Selector re-verification, live DOM inspection, on the method screen
+this file's `submit` selector targets:**
+
+    input[name="contact"]              present on load, DESTROYED on fill
+    [data-testid="card"]               present after the fill
+    [data-testid="bottom-cta-button"]  present, STILL CORRECT
+    [data-testid="add-card-cta"]       NOT present on this screen
+
+A different session had reported `bottom-cta-button` as stale, with
+`data-testid` empty and `data-test-id="add-card-cta"` as the replacement.
+That inspection was of a different screen (likely reached via a different
+path through checkout, possibly the card-entry step specifically) and does
+not apply here: on the method screen, `bottom-cta-button` was never stale.
+
+**What this was mistaken for.** A prior session, reasoning from an
+inconsistent pass/fail pattern across live runs rather than from inspecting
+the DOM, concluded PerimeterX/hCaptcha risk-scoring was silently blocking
+the flow and that only a guessed delay or an adversarial workaround could
+clear it. Live inspection disproved this: the hosted checkout renders and
+advances normally, with nothing blocking it. The actual cause was
+`waitForValueStable` auto-waiting on the destroyed contact field, which
+produces exactly the same symptom — an intermittent timeout with no visible
+cause — as a probabilistic bot-detection gate would. The refusal to build
+around bot detection was the right call regardless of the wrong diagnosis;
+the lesson is to inspect the DOM before attributing a stall to anything
+else, the same rule this file was built on from the start.

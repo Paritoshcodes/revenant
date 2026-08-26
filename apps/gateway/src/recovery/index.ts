@@ -1,3 +1,4 @@
+export * from './create-link-batch.js';
 export * from './db.js';
 export * from './idempotency-key.js';
 export * from './idempotency-store.js';

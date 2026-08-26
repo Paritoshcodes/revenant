@@ -31,3 +31,10 @@ Thumbs.db
 # scratch
 tmp/
 *.tmp
+
+# debug artefacts
+.playwright-mcp/
+.chrome-profile/
+.localcert/
+*.png
+p.json

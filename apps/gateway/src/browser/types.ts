@@ -14,6 +14,16 @@ export interface LocatorLike {
   /** Immediate, non-waiting count of currently-matching elements. */
   count(): Promise<number>;
   /**
+   * Immediate, non-waiting read of the field's current value. Used to poll
+   * for the value settling after fill() resolves: fill() dispatching the
+   * input event and the checkout app's own React state (and any reformat,
+   * docs/CHECKOUT-FLOW.md section 9) catching up to it are two different
+   * moments, and clicking on before the second one lands risks the
+   * checkout acting on stale internal state (docs/DECISIONS.md, Build log
+   * entry 7).
+   */
+  inputValue(options?: { readonly timeout?: number }): Promise<string>;
+  /**
    * Playwright's real `textContent()` AUTO-WAITS for the element to be
    * attached, using its own default timeout (30s) when none is given
    * here. On an element that never appears — or that has already
@@ -119,8 +129,6 @@ export interface AttemptFlowOptions {
   readonly cvv?: string;
   /** Budget given to every individual Playwright action, and to outcome polling overall. Should be >= 30s. */
   readonly timeoutMs?: number;
-  /** Shorter budget for the conditional save-card prompt check. */
-  readonly saveCardGuardMs?: number;
   /** Directory for failure screenshots. Omit to skip screenshots entirely. */
   readonly screenshotDir?: string;
   /** Injected so outcome polling is instant and deterministic in tests. */
