@@ -98,6 +98,15 @@ export interface CheckoutFixtureConfig {
    * treating a no-op click as a successful submit.
    */
   readonly submitTargetCollapsed?: boolean;
+  /**
+   * Models the count()-then-textContent() race a real batch run hit
+   * (docs/DECISIONS.md, Build log entry 10): the heading is present for
+   * count() purposes, but its own textContent() call always rejects with
+   * a plain timeout, never "Frame was detached". Proves the heading
+   * probe's own catch swallows this rather than propagating it and
+   * killing the whole attempt.
+   */
+  readonly headingTextContentAlwaysTimesOut?: boolean;
 }
 
 export interface CheckoutFixture {
@@ -296,6 +305,7 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
       }
       if (selector === SELECTORS.paymentStatusHeading) {
         if (frameIsDetached()) throw detached();
+        if (config.headingTextContentAlwaysTimesOut && world.bankClicked !== null) return 1;
         return headingText() !== null ? 1 : 0;
       }
       throw new Error(`unexpected count on ${selector}`);
@@ -317,6 +327,15 @@ export const createCheckoutFixture = (config: CheckoutFixtureConfig = {}): Check
       record(`frame.textContent(${selector})`);
       if (selector === SELECTORS.paymentStatusHeading) {
         if (frameIsDetached()) throw detached();
+        if (config.headingTextContentAlwaysTimesOut && world.bankClicked !== null) {
+          // count() just reported this element present; textContent() a
+          // moment later disagrees and times out — the exact race a real
+          // batch run hit (docs/DECISIONS.md, Build log entry 10), not
+          // frame detachment.
+          throw new Error(
+            `Timeout ${options?.timeout ?? 30_000}ms exceeded waiting for ${selector}`,
+          );
+        }
         const text = headingText();
         if (text === null) {
           // Playwright's real textContent() auto-waits for the element

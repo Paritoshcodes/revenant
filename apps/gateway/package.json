@@ -15,7 +15,8 @@
     "db:migrate": "node scripts/migrate.mjs",
     "webhooks": "tsx scripts/webhooks-up.mts",
     "smoke": "tsx scripts/smoke-checkout.mts",
-    "smoke:batch": "tsx scripts/smoke-batch.mts"
+    "smoke:batch": "tsx scripts/smoke-batch.mts",
+    "batch": "tsx scripts/run-batch.mts"
   },
   "dependencies": {
     "@revenant/contracts": "*",

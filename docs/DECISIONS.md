@@ -1001,3 +1001,209 @@ ambiguous about the present.
 One contradiction remains OPEN by design and is marked as such: the two
 conflicting live observations of `add-card-cta` versus `bottom-cta-button`.
 Neither is cited as fact anywhere, and no code depends on resolving it.
+
+## Build log entry 9: a retry's submit click has no effect headless, masked by slowMo the whole project
+
+Found by the first live Layer 1 batch run (src/recovery/run-batch.ts),
+which is also the first thing in this project to drive a real RETRY
+headless with no `slowMo`. 8/8 real batch transactions failed identically:
+seed attempt fails correctly, the retry re-fills the card fields
+correctly, `[data-testid="bottom-cta-button"]` is confirmed real, visible,
+and hit-testing to itself (ruling out entry 8's decoy-click class), the
+click resolves without error — and the popup never opens.
+
+`smoke-checkout.mts`, which has passed this exact fail-then-retry sequence
+every time it has ever been run in this project, was cloned with only
+`headless: false, slowMo: 300` changed to `headless: true`. It reproduced
+the same failure. Every other line was identical. This isolates the cause
+to headless-without-pacing specifically, on the RETRY click alone — every
+first attempt in this project's history, headless or not, has been
+reliable.
+
+**A real-condition substitute was tried and rejected before falling back
+to a duration.** `page.waitForLoadState('networkidle', {timeout: 5000})`
+right before the retry's submit click: one run resolved after 1559ms and
+the click then succeeded; the next resolved after 1ms (network was already
+idle) and the click still failed. Whatever needs to settle after a retry's
+card-method click and re-fill is not network activity, and nothing else
+observable from outside the page was found. A flat wait was tested
+directly against this: the identical click failed 8/8 times at 0ms delay
+and succeeded 3/3 times after a 1000ms wait, nothing else changed. Shipped
+as `PRE_SUBMIT_SETTLE_MS = 1500` in `attempt()` (checkout-flow.ts), routed
+through the existing injectable `sleep` so the unit suite (which uses a
+non-real fake sleep) pays nothing for it.
+
+This is the one duration-based wait in the driver, and it is labelled as
+exactly that in code rather than dressed up as a condition. Every other
+wait in this file gates on something real; this one does not, because nine
+attempts across two different experiments (networkidle, flat sleep) turned
+up no real signal to gate on instead.
+
+**Why `slowMo` hid this for the whole project.** Every prior live
+verification in this project — `npm run smoke`, the contract test's own
+retry-adjacent paths, every manual investigation — either drove a single
+attempt or drove smoke-checkout.mts, which has run headed with
+`slowMo: 300` since it was written. Playwright's `slowMo` pads every
+low-level input action by that many milliseconds, which incidentally
+supplied exactly the settling time this bug needed, on every action, for
+the whole life of the project. Headless, with no padding anywhere, is what
+finally forced a retry through fast enough to hit it. Consistent with the
+project's standing pattern: this was found by a live run, not by the 274
+tests that were passing at the time.
+
+## 2026-08-26 The batch runner gets a labelled stand-in outcome model, a forced veto, and a concurrency-4 stress test
+
+Three problems with the batch runner as it stood after entry 9.
+
+**Every transaction captured in both arms, by construction.** The runner
+chose Success on every agent retry, so control and treatment were
+indistinguishable — Layer 1 could execute the mechanism but could not even
+in principle show a difference between arms, since there was nothing
+random or arm-dependent about the retry outcome at all.
+
+**Fix: `OutcomeModel` in run-batch.ts, a labelled stand-in, not real bank
+behaviour.** A seeded, deterministic Bernoulli draw per agent-driven
+attempt (mulberry32, not Math.random, so a run is reproducible from its
+logged seed alone), parameterised per arm via `recoveryRateByArm`
+(defaults 0.4 control / 0.9 treatment — illustrative, not derived from
+anything). Each transaction gets its OWN independently-seeded model
+(`deriveTransactionSeed(masterSeed, index)`) rather than sharing one RNG
+across the worker pool: a shared RNG's draw SEQUENCE would still be
+reproducible, but which transaction consumes which draw depends on real
+async interleaving, which is not reproducible across runs once
+concurrency > 1. Per-transaction seeding sidesteps that entirely.
+
+**This must never be read as evidence the policy works, and both the CLI
+and the report say so on every run** (`RunBatchReport.caveat`,
+`LAYER1_CAVEAT`): Layer 1 proves the mechanism — real attempts, real
+guardrails, real audit chain — executes correctly against real Razorpay.
+A difference between arms produced with this model is a property of the
+`recoveryRateByArm` parameters the run was given, not incremental recovery.
+That claim is Layer 2's, on synthetic data where the true lift is known by
+construction and the calibration check proves the estimator sound.
+
+**No batch run had ever produced a veto.** Every real test-mode diagnosis
+in this account maps to a transient, retryable grid cell — there is no
+organic way to reach an unsafe cell through real Razorpay data alone, so
+the code path that refuses an action had never executed end to end.
+
+**Fix: `forceGuardrailVetoOn`, transaction index 0 of every run.** After
+its real seed failure (still against real Razorpay — the override changes
+nothing about how that attempt happened), its diagnosis is deliberately
+overridden to `bank/authentication`, an unmapped grid cell, logged plainly
+as a diagnostic override rather than a real observed diagnosis
+(`diagnosis_overridden` progress event, `TransactionResult.diagnosisOverridden`).
+`terminal_grid_cell` vetoes an unmapped cell unconditionally, same
+mechanism already covered by recovery-integration.test.ts's fake-executor
+test, now exercised for real. Verified directly against the live database
+after a run: `guardrail_veto` recorded as its own audit event
+(`guardrail_verdict: "veto"`, `proposed_action: "retry_with_backoff"`),
+followed by `transaction_closed` with `attempts_made: 0` — confirming no
+outbound Razorpay call was made for the vetoed decision. `TransactionResult.executorCalls`
+makes this checkable from every run's own report, not just this one.
+
+**Concurrency-4 stress test on `PRE_SUBMIT_SETTLE_MS` (entry 9): held.**
+`npm run batch -- --count 10 --concurrency 4`, four browser contexts
+genuinely concurrent on one CPU — exactly the condition that would expose
+a fixed settle time tuned at concurrency 1 on an idle machine. 12 real
+agent attempts across 10 transactions, zero retry-submit failures. The
+constant was not raised; there was nothing to raise it for.
+
+**That run also organically exercised two more veto reasons never seen
+before, on top of the forced one**, purely from the outcome model
+producing real failures for the first time:
+
+  - `minimum_backoff`: a treatment-arm transaction's attempt 1 failed
+    (per the model), attempt 2 was proposed immediately, and the 60s
+    spacing guardrail correctly refused it (`lastAttemptAtMs` was no
+    longer null once a real agent attempt had happened) — the treatment
+    arm's own spacing schedule, doing exactly what DECISIONS.md's earlier
+    guardrail entry says it exists to do.
+  - `circuit_breaker`: the run's real failure rate reached 6/11 (54.5%),
+    past the 50% threshold, and the breaker correctly halted the two
+    transactions still in flight rather than letting them retry into a
+    run that had already gone bad.
+
+Full run: 10 links, 12 attempts, 6 captures, 2 failures, 4 guardrail
+vetoes (1 forced, 1 minimum_backoff, 2 circuit_breaker), recovered
+149700 paise control / 149700 paise treatment, elapsed 300.5s (seed
+1051283054, reproducible with `--seed 1051283054`). All figures OBSERVED
+per the caveat above.
+
+## 2026-08-26 Three bugs from the count=20 run: the circuit breaker measured itself, a probe killed a transaction, and the exit code lied
+
+A `--count 20 --control-rate 0.2 --treatment-rate 0.95` run surfaced arm
+divergence working as intended (control ₹998 from 2/7, treatment ₹2495
+from 5/5) alongside three real bugs, none caught by the unit suite.
+
+**The circuit breaker tripped on the experiment working, not a fault.**
+At control-rate 0.2, most control-arm attempts are SUPPOSED to fail —
+that is the whole point of giving the two arms different rates. The
+breaker's input, `batchStats.failed`, counted exactly those designed
+failures, so a 53% "failure" rate tripped it and halted 8 of 20
+transactions before they ever got an attempt. Worse, which 8 was not
+random: whichever transactions happened to be later in the queue when the
+threshold crossed, silently biasing any arm comparison drawn from that
+run (a queue-position confound, not a data quality problem the report
+would show).
+
+Options considered: raise the threshold or `minSettled` (arbitrary,
+still couples a safety mechanism to whatever `recoveryRateByArm` is
+configured this run, and the next `--control-rate` still breaks it);
+disable the breaker for batch runs (loses the actual protection it exists
+for — a genuine credential/account/network fault mid-run); make the
+breaker grid-cell-aware so it only counts UNEXPECTED failures (couples a
+guardrail meant to be a pure function of `{settled, failed}` to an
+outcome-model concept, `recoveryRateByArm`, that only run-batch.ts knows
+about).
+
+**Fix: redefine what run-batch.ts feeds the breaker, not the breaker
+itself.** `ExecutionHealth {attempted, errored}` tracks genuine execution
+faults — a `Result` coming back `err` from `openCheckout`, `attempt()`,
+`fetchPayment`, or `runRecoveryStep` itself — completely separate from
+`TransactionResult`'s own `finalOutcome` (captured/failed), which still
+drives the summary's capture/failure counts exactly as before. A payment
+settling as `failed` is not recorded in `ExecutionHealth` at all: the
+attempt worked exactly as intended, the mock bank just declined it per
+the model. `runRecoveryStep`'s `batch:` argument is now
+`{settled: errorStats.attempted, failed: errorStats.errored}` — an error
+rate, not a decline rate. `guardrails/rules.ts`, `types.ts`, and
+`config.ts` are UNCHANGED: the breaker's own threshold (0.5) and arming
+point (`minSettled` 10) still mean exactly what they always meant, "half
+of at least ten operations came back a hard error" — a real production
+caller with no outcome model gets identical behaviour to before. Only
+this caller's definition of "failed" changed, because only this caller
+introduced a reason payment-outcome failure and system failure could
+diverge.
+
+**A probe's own bounded timeout killed a transaction outright.**
+`txn_10` errored with `locator.textContent: Timeout 250ms exceeded
+waiting for payment-status-heading`. `pollOutcomeOnce`'s heading probe
+already guarded with `count()` before calling `textContent()`
+(`PROBE_TIMEOUT_MS`, added for exactly this reason — see Build log entry
+6), but the two calls are not atomic: the element can exist at `count()`
+and be gone by the time `textContent()` resolves, and that gap surfaces
+as a plain "Timeout ... exceeded" rejection, not "Frame was detached".
+The old catch only swallowed detachment (`isFrameDetachedError`), so this
+timeout re-threw and killed the whole attempt — one in twenty
+transactions at concurrency 4. Same bug class as entries 6 and 7 in a
+third place: a non-authoritative probe inside a poll loop must be fully
+non-fatal, not fatal-except-for-one-known-message. Fixed by swallowing
+EVERY error from this specific probe, unconditionally: the heading is
+documented as an optional early exit only (`.Payment-Completed` and
+`retry-surface`, checked earlier in the same function, are what the
+caller actually trusts), so there is no case where propagating its
+failure is more correct than just trying again next tick. A fixture
+config (`headingTextContentAlwaysTimesOut`) reproduces the exact race —
+count() present, textContent() always times out — and a test confirms it
+against the pre-fix code first (reverted locally, confirmed red, restored)
+before confirming the fix green.
+
+**The script exited non-zero on a successful run.** Any transaction with
+a recorded `.error` made `run-batch.mts` exit 1, even though vetoes,
+declines, and even a handful of processing errors are all things a Layer
+1 batch run exists to observe and report, not reasons the SCRIPT failed.
+Fixed: exit non-zero only when `runBatch()` itself returns `!ok` (link
+creation failed outright, or similar) — a completed run that printed its
+summary is a success regardless of what happened inside it. Per-transaction
+errors are still counted and printed, just no longer fatal to the process.

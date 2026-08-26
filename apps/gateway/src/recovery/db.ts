@@ -26,6 +26,37 @@ const toFailure = (cause: unknown, context: string): Failure => ({
   cause,
 });
 
+export interface InsertTransactionInput {
+  readonly id: string;
+  readonly rzpOrderId?: string | null;
+  readonly rzpPaymentLinkId?: string | null;
+  readonly amountPaise: number;
+  readonly arm: Arm;
+}
+
+/** Every transaction starts `open`. Opening it is the caller's job to pair with a `transaction_opened` audit event, same transaction. */
+export const insertTransaction = async (
+  db: Queryable,
+  input: InsertTransactionInput,
+): Promise<Result<void>> => {
+  try {
+    await db.query(
+      `INSERT INTO transactions (id, rzp_order_id, rzp_payment_link_id, amount_paise, arm, status)
+       VALUES ($1, $2, $3, $4, $5, 'open')`,
+      [
+        input.id,
+        input.rzpOrderId ?? null,
+        input.rzpPaymentLinkId ?? null,
+        input.amountPaise,
+        input.arm,
+      ],
+    );
+    return ok(undefined);
+  } catch (cause) {
+    return err(toFailure(cause, `insertTransaction ${input.id}`));
+  }
+};
+
 export interface InsertDecisionInput {
   readonly transactionId: string;
   readonly attemptNumber: number;

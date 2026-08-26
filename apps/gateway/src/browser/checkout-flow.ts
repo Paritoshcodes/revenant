@@ -68,6 +68,8 @@ const DEFAULT_CVV = '123';
 const DEFAULT_CONTACT = '9000090000';
 /** Failures settle in ~6s, captures in ~15s (docs/CHECKOUT-FLOW.md section 6). */
 const POLL_INTERVAL_MS = 500;
+/** See the comment at its call site in attempt(): empirically required, not a real condition. 1000ms cleared it 3/3 live; kept a margin above that. */
+const PRE_SUBMIT_SETTLE_MS = 1_500;
 
 const realSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -211,7 +213,19 @@ export const openCheckout = async (
  * only on its EXACT text, never its existence. A query against the frame
  * that throws "detached" is swallowed rather than propagated — the driver
  * keeps polling and lets the parent check catch it on a later iteration.
- * Any other error is a genuine failure and propagates immediately.
+ *
+ * The heading probe's own catch swallows EVERY error, not just "detached":
+ * count() finding the element does not guarantee it survives to the
+ * textContent() call a moment later, and when it does not, that call
+ * rejects with a plain timeout ("Timeout 250ms exceeded"), which does not
+ * match /detach/i. A real batch run hit exactly this and it killed the
+ * whole transaction (docs/DECISIONS.md, Build log entry 10) — the same
+ * class of bug as entries 6 and 7: a probe inside a poll loop must be
+ * non-blocking AND non-fatal, and this one is purely an optional early
+ * exit, never the authoritative signal (that is .Payment-Completed and
+ * retry-surface, both checked above, whose own errors DO still propagate
+ * unless they are frame-detachment, since they are the thing this
+ * function's caller actually trusts).
  */
 const pollOutcomeOnce = async (
   page: PageLike,
@@ -233,8 +247,12 @@ const pollOutcomeOnce = async (
       const headingText = await heading.textContent({ timeout: PROBE_TIMEOUT_MS });
       if (headingText === PAYMENT_SUCCESSFUL_TEXT) return 'captured';
     }
-  } catch (cause) {
-    if (!isFrameDetachedError(cause)) throw cause;
+  } catch {
+    // Non-authoritative early-exit probe only. The element can vanish
+    // between count() and textContent() resolving — a timeout here is
+    // that race, not a genuine failure. Any error just means "no signal
+    // this tick"; the parent and retry-surface checks above are what the
+    // caller actually relies on.
   }
 
   return null;
@@ -301,6 +319,21 @@ export const attempt = async (
     await waitForValueStable(frame.locator(SELECTORS.cardExpiry), timeout);
     await frame.locator(SELECTORS.cardCvv).fill(cvv, { timeout });
     await waitForValueStable(frame.locator(SELECTORS.cardCvv), timeout);
+
+    // The one duration-based wait in this file, kept deliberately narrow
+    // and labelled honestly as exactly that — every other wait here is a
+    // real condition. A controlled live comparison found the submit
+    // click's own handler is not yet wired up immediately after a RETRY's
+    // card fields are refilled: headless with no artificial pacing, the
+    // identical click failed 8/8 real attempts (popup never opened);
+    // waiting this long first, nothing else changed, succeeded 3/3. A
+    // real-condition substitute was tried first and rejected:
+    // `waitForLoadState('networkidle')` sometimes resolved in under 5ms
+    // and the click still failed, so whatever needs to settle here is not
+    // network activity and has no external signal this driver can observe.
+    // headed+slowMo runs never surfaced this, which is why it went
+    // uncaught until a headless batch run hit it 100% of the time.
+    await sleep(PRE_SUBMIT_SETTLE_MS);
 
     // Registered before the click that can trigger it: waitForEvent must
     // start listening before the popup opens, or the event can be missed.

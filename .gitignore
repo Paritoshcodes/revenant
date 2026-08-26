@@ -38,3 +38,5 @@ tmp/
 .localcert/
 *.png
 p.json
+*.egg-info/
+dist-types/

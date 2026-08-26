@@ -1,8 +1,0 @@
-pyproject.toml
-src/revenant_engine/__init__.py
-src/revenant_engine/main.py
-src/revenant_engine.egg-info/PKG-INFO
-src/revenant_engine.egg-info/SOURCES.txt
-src/revenant_engine.egg-info/dependency_links.txt
-src/revenant_engine.egg-info/requires.txt
-src/revenant_engine.egg-info/top_level.txt

@@ -144,8 +144,11 @@ describe('attempt: success, heading resolves within its window', () => {
 
     expect(result.ok).toBe(true);
     // tick0 misses ("Confirming Payment"), tick1 hits the exact
-    // "Payment Successful" text: exactly one sleep between them.
-    expect(fixture.calls.filter((call) => call.startsWith('sleep(')).length).toBe(1);
+    // "Payment Successful" text: exactly one outcome-poll sleep (500ms)
+    // between them. Filtered to that duration specifically so it stays
+    // unaffected by the separate, differently-timed pre-submit settle
+    // wait (1500ms) that now also goes through this same fixture hook.
+    expect(fixture.calls.filter((call) => call === 'sleep(500)').length).toBe(1);
     expect(fixture.calls).toContain(`frame.textContent(${SELECTORS.paymentStatusHeading})`);
   });
 });
@@ -485,5 +488,27 @@ describe('fixture fidelity: an eighth bug (Build log entry 8), a collapsed decoy
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.message).toMatch(/not visible|0x0/);
+  });
+});
+
+describe('fixture fidelity: a tenth bug (Build log entry 10), a non-authoritative probe killing the whole attempt', () => {
+  it('does not fail the attempt when the heading exists at count() but its own textContent() times out', async () => {
+    // A real batch run hit exactly this: count() reported the heading
+    // present, but textContent() a moment later timed out (the element
+    // had moved on) with a plain "Timeout ... exceeded" message, not
+    // "Frame was detached" — so the old catch, which only swallowed
+    // detachment, re-threw it and killed the transaction. The heading is
+    // a non-authoritative early-exit probe; the retry surface below is
+    // what this attempt must actually resolve on.
+    const fixture = openedFixture({
+      headingTextContentAlwaysTimesOut: true,
+      failureSettleTick: 2,
+    });
+
+    const result = await driveAttempt(fixture, '4100280000020007', 'failure');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.outcome).toBe('failed');
   });
 });
