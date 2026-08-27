@@ -1,0 +1,242 @@
+{
+  "source": "docs/EXPERIMENT-PROTOCOL.md, '## Ground truth'. FROZEN alongside the protocol: changing a value here without logging the reason in docs/DECISIONS.md and rerunning the experiment from scratch invalidates any result already produced.",
+  "note": "Full cross product: every one of the 7 policy-grid rows (packages/contracts/data/policy-grid.json) crossed with every one of the 5 RecoveryAction values, 35 entries. Not just each cell's own designated action, because EXPERIMENT-PROTOCOL.md's control arm is explicitly grid-unaware ('retry immediately, up to 3 attempts, no grid awareness') and always applies retry_with_backoff regardless of which action the cell's own row actually names -- so a mismatched-action probability is a real, load-bearing number, not a hypothetical. RULE 1: nudge_no_auto_retry and never_retry are 0.0 for every cell, always. This is a MODELLING CHOICE, not a claim that nudges are ineffective in reality: this population scores only whether the one modelled attempt recovers, and neither action re-presents the payment within that attempt, so no recovery event can occur through it in this world. RULE 2: the terminal cell (business/payment_initiation) is 0.0 for every action with no exceptions -- it fails identically regardless of mechanism, by definition of terminal. RULE 3 (the load-bearing one): for the other 5 cells, the cell's own grid-designated action gets its best-match probability ('home'); the other two retry actions get a lower, individually-reasoned 'mismatched retry' probability -- what happens when that specific wrong tool is applied to that specific failure. retry_with_backoff on a cell whose home action is something else is the economically important mismatch, since it is literally what the control arm does on every cell, every time.",
+  "weighted_true_lift": {
+    "status": "CORRECTED 2026-08-27 (docs/DECISIONS.md). A first, hand-computed draft of this block (single-attempt, raw config values, no accounting for how modulation actually averages over customer_prior's real distribution) is WRONG and has been replaced. Never hand-compute this block again -- it must always be regenerated from apps/engine/src/revenant_engine/true_lift.py's compute_true_lift(), and cross-checked against tests/test_true_lift.py's independent Monte Carlo simulation before being copied in here.",
+    "method": "compute_true_lift() computes a REALISED expectation, not raw-config arithmetic: for each cell, control_realised_probability and treatment_realised_probability are each E over customer_prior ~ Beta(2,3) of 'recovers within K i.i.d. attempts at that customer's own modulated probability' (1 - (1-modulated_probability(p_true, prior))^K), integrated numerically (scipy.integrate.quad) rather than assumed equal to the raw config p_true. K (attempts_for_action) is pinned in EXPERIMENT-PROTOCOL.md's '## Assignment': 3 for a retry action, 0 for nudge_no_auto_retry/never_retry. Each cell is then weighted by its population share (grid_cell_weights -- taxonomy-derived counts of 2, 1, 2, 3, 1, 1, 1 out of 11, internal/* floored) and (treatment_realised - control_realised) summed. IMPORTANT: a config true_recovery_probability value does NOT equal what the population realises -- e.g. gateway/payment_authorization's configured 0.55 realises 0.8289 once compounded over up to 3 attempts and averaged over the real Beta(2,3) distribution (modulated_probability centers its shift at logit(mean(Beta(2,3))) = logit(0.4) = -0.4055, but E[logit(Beta(2,3))] = -0.5 exactly, a real Jensen's-inequality gap that does not cancel out in aggregate). Never read a config probability as a population rate.",
+    "per_cell_realised": [
+      { "grid_cell": "gateway/payment_authorization", "weight": 0.1818, "control_realised_probability": 0.8289, "treatment_realised_probability": 0.8289, "weighted_contribution_pp": 0.0, "note": "control == treatment action here (both retry_with_backoff), zero true lift from this cell by construction" },
+      { "grid_cell": "gateway/authentication", "weight": 0.0909, "control_realised_probability": 0.4523, "treatment_realised_probability": 0.7799, "weighted_contribution_pp": 2.9782 },
+      { "grid_cell": "bank/payment_authorization", "weight": 0.1818, "control_realised_probability": 0.3831, "treatment_realised_probability": 0.7318, "weighted_contribution_pp": 6.3398 },
+      { "grid_cell": "customer/payment_authorization", "weight": 0.2727, "control_realised_probability": 0.1145, "treatment_realised_probability": 0.0, "weighted_contribution_pp": -3.1238, "note": "treatment action is nudge_no_auto_retry, realises exactly 0.0 (RULE 1); control compounds its small per-attempt probability over up to 3 attempts" },
+      { "grid_cell": "customer/payment_authentication", "weight": 0.0909, "control_realised_probability": 0.08, "treatment_realised_probability": 0.0, "weighted_contribution_pp": -0.7268, "note": "same structure as customer/payment_authorization" },
+      { "grid_cell": "business/payment_initiation", "weight": 0.0909, "control_realised_probability": 0.0, "treatment_realised_probability": 0.0, "weighted_contribution_pp": 0.0, "note": "terminal, RULE 2" },
+      { "grid_cell": "internal/*", "weight": 0.0909, "control_realised_probability": 0.8599, "treatment_realised_probability": 0.8599, "weighted_contribution_pp": 0.0, "note": "control == treatment action here (both retry_with_backoff), zero true lift from this cell by construction" }
+    ],
+    "positive_contribution_pp": 9.32,
+    "positive_contribution_detail": "gateway/authentication (2.98pp) + bank/payment_authorization (6.34pp), where control's zero-delay blind retry realises a materially lower recovery rate than the targeted action even after both are compounded over up to 3 attempts",
+    "negative_contribution_pp": -3.85,
+    "negative_contribution_detail": "customer/payment_authorization (-3.12pp) + customer/payment_authentication (-0.73pp). Larger in magnitude than a single-attempt calculation suggests, because control's small per-attempt probability compounds over up to 3 attempts (0.03 configured -> 0.1145 realised on customer/payment_authorization) while treatment's nudge_no_auto_retry stays exactly 0.0 regardless of attempt count.",
+    "negative_contribution_reason": "Structural, not an error: nudge_no_auto_retry (the correct, grid-aware action on both customer cells) realises exactly 0.0 by RULE 1 at any attempt count, because it never re-presents the payment -- so correctly declining a futile retry cannot itself register as a recovery here, even though control's blind zero-delay retry gets up to 3 tries to get lucky on the same cell. The measured true lift therefore UNDERSTATES whatever a full multi-attempt policy simulation would show, and the bias runs against the treatment arm, never for it.",
+    "net_true_lift_pp": 5.47,
+    "net_detail": "9.32 - 3.85 = 5.47pp, computed by compute_true_lift() and cross-checked against an independent Monte Carlo simulation (tests/test_true_lift.py, N=400,000, agrees within 5 standard errors per cell and in total) before being recorded here. Still sits within EXPERIMENT-PROTOCOL.md's stated 5-8pp target range (just inside the lower edge) and close to its own power analysis's 6pp detection threshold -- near the edge of what the design can detect, not a signal so large the calibration check's confidence interval would trivially avoid zero on every run."
+  },
+  "entries": [
+    {
+      "grid_cell": "gateway/payment_authorization",
+      "action": "retry_with_backoff",
+      "true_recovery_probability": 0.55,
+      "reasoning": "HOME action (policy-grid.json). Pure transient gateway/infrastructure blip -- the real observed test-mode cell. No mechanism-specific fix needed, just another attempt; recovers readily. Also what the control arm applies here, so this cell contributes zero true lift: blind retry already IS the correct action."
+    },
+    {
+      "grid_cell": "gateway/payment_authorization",
+      "action": "retry_prompt_alternate",
+      "true_recovery_probability": 0.50,
+      "reasoning": "Mismatched (not this cell's home action, and not what control applies either -- included only for cross-product completeness). A transient infra blip doesn't care which auth/payment method is used, so a generic retry via a different prompt still mostly catches it, just slightly less precisely targeted than backoff's own designed fix."
+    },
+    {
+      "grid_cell": "gateway/payment_authorization",
+      "action": "retry_on_timing_window",
+      "true_recovery_probability": 0.50,
+      "reasoning": "Mismatched, cross-product completeness. Same reasoning as retry_prompt_alternate above: the blip is mechanism-agnostic, so a generic retry still mostly works."
+    },
+    {
+      "grid_cell": "gateway/payment_authorization",
+      "action": "nudge_no_auto_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 1: never re-presents the payment within this modelled attempt, so 0.0 by construction regardless of cell."
+    },
+    {
+      "grid_cell": "gateway/payment_authorization",
+      "action": "never_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 1: never re-presents the payment within this modelled attempt, so 0.0 by construction regardless of cell."
+    },
+
+    {
+      "grid_cell": "gateway/authentication",
+      "action": "retry_prompt_alternate",
+      "true_recovery_probability": 0.48,
+      "reasoning": "HOME action. An authentication-step failure (e.g. a 3DS/OTP hiccup) is often the METHOD's problem, not the gateway's: prompting an alternate authentication instrument sidesteps whatever specifically broke. Set slightly below the pure-infra gateway/payment_authorization cell (0.55), since authentication friction is somewhat less mechanically clean than a plain transient blip."
+    },
+    {
+      "grid_cell": "gateway/authentication",
+      "action": "retry_with_backoff",
+      "true_recovery_probability": 0.18,
+      "reasoning": "MISMATCHED -- what the control arm applies here, load-bearing. Resubmitting the SAME auth method into the SAME failure mostly just fails again. Also: control retries with ZERO delay (CONTROL_ARM_GUARDRAIL_CONFIG.attemptSpacing.baseMs = 0, apps/gateway/src/guardrails/config.ts), so there is not even time for a transient auth-server hiccup to clear on its own before the retry fires. Gap vs. home (0.48-0.18=0.30) is the largest single mismatch in the table -- this cell is where being grid-aware matters most."
+    },
+    {
+      "grid_cell": "gateway/authentication",
+      "action": "retry_on_timing_window",
+      "true_recovery_probability": 0.12,
+      "reasoning": "Mismatched, cross-product completeness. Timing isn't the mechanism here, the method is -- waiting for a window does nothing for a broken auth method, so this scores lower than even the backoff mismatch."
+    },
+    {
+      "grid_cell": "gateway/authentication",
+      "action": "nudge_no_auto_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 1: never re-presents the payment within this modelled attempt, so 0.0 by construction regardless of cell."
+    },
+    {
+      "grid_cell": "gateway/authentication",
+      "action": "never_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 1: never re-presents the payment within this modelled attempt, so 0.0 by construction regardless of cell."
+    },
+
+    {
+      "grid_cell": "bank/payment_authorization",
+      "action": "retry_on_timing_window",
+      "true_recovery_probability": 0.42,
+      "reasoning": "HOME action. A soft bank decline (issuer temporarily busy, rate-limited, or a transient risk-engine flag) is genuinely time-sensitive: waiting for the right window materially helps. Set below the transient-class cells since a soft decline is inherently less reliably recoverable than a pure infra blip, per the failure-class ordering (transient > soft)."
+    },
+    {
+      "grid_cell": "bank/payment_authorization",
+      "action": "retry_with_backoff",
+      "true_recovery_probability": 0.14,
+      "reasoning": "MISMATCHED -- what the control arm applies here, load-bearing. Control's zero delay (see gateway/authentication above) means an undirected 'backoff' retry captures almost none of the 'wait for the right window' benefit that actually recovers this cell. Gap vs. home (0.42-0.14=0.28) is the second-largest mismatch and the second source of the table's positive true lift."
+    },
+    {
+      "grid_cell": "bank/payment_authorization",
+      "action": "retry_prompt_alternate",
+      "true_recovery_probability": 0.10,
+      "reasoning": "Mismatched, cross-product completeness. The method isn't the issue for a soft bank-side decline, timing is -- switching instrument does little, scores lowest of the three retry actions on this cell."
+    },
+    {
+      "grid_cell": "bank/payment_authorization",
+      "action": "nudge_no_auto_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 1: never re-presents the payment within this modelled attempt, so 0.0 by construction regardless of cell."
+    },
+    {
+      "grid_cell": "bank/payment_authorization",
+      "action": "never_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 1: never re-presents the payment within this modelled attempt, so 0.0 by construction regardless of cell."
+    },
+
+    {
+      "grid_cell": "customer/payment_authorization",
+      "action": "nudge_no_auto_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "HOME action, and RULE 1 applies: nudge never re-presents the payment within this modelled attempt, so 0.0 by construction -- this is the source of this cell's negative contribution to true lift, see weighted_true_lift.negative_contribution_reason above. NOT a claim that nudging a customer with insufficient funds / an invalid card is ineffective in reality; it is a statement about what this single-attempt simulation can score."
+    },
+    {
+      "grid_cell": "customer/payment_authorization",
+      "action": "retry_with_backoff",
+      "true_recovery_probability": 0.03,
+      "reasoning": "MISMATCHED -- what the control arm applies here, load-bearing (this cell has the largest population weight in the table, 3/11). This cluster (insufficient_fund, card_disabled_online, card_number_invalid per decline-taxonomy.json) is genuinely customer-side and mostly time-invariant: the same card retried with zero delay hits the same problem. Kept small but nonzero -- occasionally the decline was a flaky one-off, or funds had just landed."
+    },
+    {
+      "grid_cell": "customer/payment_authorization",
+      "action": "retry_prompt_alternate",
+      "true_recovery_probability": 0.02,
+      "reasoning": "Mismatched, cross-product completeness. Switching auth method doesn't address an underlying funds/eligibility problem any better than backoff does."
+    },
+    {
+      "grid_cell": "customer/payment_authorization",
+      "action": "retry_on_timing_window",
+      "true_recovery_probability": 0.02,
+      "reasoning": "Mismatched, cross-product completeness. Same reasoning as retry_prompt_alternate: neither addresses the root cause."
+    },
+    {
+      "grid_cell": "customer/payment_authorization",
+      "action": "never_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 1: never re-presents the payment within this modelled attempt, so 0.0 by construction regardless of cell."
+    },
+
+    {
+      "grid_cell": "customer/payment_authentication",
+      "action": "nudge_no_auto_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "HOME action, and RULE 1 applies: nudge never re-presents the payment within this modelled attempt, so 0.0 by construction. This is the abandonment cell (docs/CHECKOUT-FLOW.md section 12: payment_cancelled | customer | payment_authentication, verified live on pay_TTf77VQJupE6KI) -- contributes to the table's negative true-lift drag, see weighted_true_lift above."
+    },
+    {
+      "grid_cell": "customer/payment_authentication",
+      "action": "retry_with_backoff",
+      "true_recovery_probability": 0.02,
+      "reasoning": "MISMATCHED -- what the control arm applies here. The customer physically walked away from the checkout; an automated resubmit cannot re-engage them regardless of delay. Set even lower than customer/payment_authorization's mismatch (0.03), since that cluster at least has a chance the underlying card/funds state changed -- here nothing changes without the customer's own action."
+    },
+    {
+      "grid_cell": "customer/payment_authentication",
+      "action": "retry_prompt_alternate",
+      "true_recovery_probability": 0.02,
+      "reasoning": "Mismatched, cross-product completeness. Same reasoning as retry_with_backoff on this cell: no automated action re-engages an absent customer."
+    },
+    {
+      "grid_cell": "customer/payment_authentication",
+      "action": "retry_on_timing_window",
+      "true_recovery_probability": 0.02,
+      "reasoning": "Mismatched, cross-product completeness. Same reasoning: no automated action re-engages an absent customer."
+    },
+    {
+      "grid_cell": "customer/payment_authentication",
+      "action": "never_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 1: never re-presents the payment within this modelled attempt, so 0.0 by construction regardless of cell."
+    },
+
+    {
+      "grid_cell": "business/payment_initiation",
+      "action": "retry_with_backoff",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 2: terminal cell, 0.0 for every action with no exceptions. An international card on a domestic-only account (international_transaction_not_allowed, the real observed terminal-class failure) fails identically every time regardless of mechanism -- that is what 'terminal' means."
+    },
+    {
+      "grid_cell": "business/payment_initiation",
+      "action": "retry_prompt_alternate",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 2: terminal cell, 0.0 for every action with no exceptions."
+    },
+    {
+      "grid_cell": "business/payment_initiation",
+      "action": "retry_on_timing_window",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 2: terminal cell, 0.0 for every action with no exceptions."
+    },
+    {
+      "grid_cell": "business/payment_initiation",
+      "action": "nudge_no_auto_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 2: terminal cell, 0.0 for every action with no exceptions."
+    },
+    {
+      "grid_cell": "business/payment_initiation",
+      "action": "never_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "HOME action, and RULE 2 applies: terminal cell, 0.0 for every action with no exceptions."
+    },
+
+    {
+      "grid_cell": "internal/*",
+      "action": "retry_with_backoff",
+      "true_recovery_probability": 0.60,
+      "reasoning": "HOME action, and also what the control arm applies here -- no mismatch, zero true-lift contribution from this cell. Our own internal system fault (not a Razorpay-reported decline), so recovery is entirely within our own control once retried; set highest in the table since there is no external counterparty state to wait on or reason about, unlike every other cell."
+    },
+    {
+      "grid_cell": "internal/*",
+      "action": "retry_prompt_alternate",
+      "true_recovery_probability": 0.55,
+      "reasoning": "Mismatched, cross-product completeness. An internal fault doesn't care which auth/payment method is used, so a generic retry via a different prompt still mostly clears it, just marginally less precisely targeted than plain backoff."
+    },
+    {
+      "grid_cell": "internal/*",
+      "action": "retry_on_timing_window",
+      "true_recovery_probability": 0.55,
+      "reasoning": "Mismatched, cross-product completeness. Same reasoning as retry_prompt_alternate above: the fault is mechanism-agnostic."
+    },
+    {
+      "grid_cell": "internal/*",
+      "action": "nudge_no_auto_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 1: never re-presents the payment within this modelled attempt, so 0.0 by construction regardless of cell."
+    },
+    {
+      "grid_cell": "internal/*",
+      "action": "never_retry",
+      "true_recovery_probability": 0.0,
+      "reasoning": "RULE 1: never re-presents the payment within this modelled attempt, so 0.0 by construction regardless of cell."
+    }
+  ]
+}

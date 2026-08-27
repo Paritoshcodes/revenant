@@ -1264,3 +1264,160 @@ never calls `closeTransaction` directly) — now write `attempt_settled`/
 exercise both call orderings and real concurrent racers against the fix;
 `tests/unit/idempotency-store.test.ts` gained a case for the
 `already_settled` path directly.
+
+## 2026-08-27 EXPERIMENT-PROTOCOL.md corrected from six to seven grid rows; ground-truth.json committed
+
+`packages/contracts/data/policy-grid.json` gained its seventh row
+(`customer/payment_authentication` → `nudge_no_auto_retry`) on 2026-08-26,
+from the live abandonment finding this same log already records
+(`docs/CHECKOUT-FLOW.md` section 12: a payment abandoned after submit
+resolves to `payment_cancelled | customer | payment_authentication`).
+`docs/EXPERIMENT-PROTOCOL.md`'s `## Population` section still said "six
+policy-grid rows" — the protocol doc was never updated when the grid was,
+so it silently disagreed with the canonical contracts data it's supposed
+to govern.
+
+Per the protocol's own rule ("if a change is genuinely required, log it in
+DECISIONS.md with the reason, and rerun from scratch"): corrected to
+"seven policy-grid rows". **No experiment run has ever executed** — the
+synthetic generator this protocol governs did not exist until this same
+session — so no result is invalidated by this correction. This is closing
+a gap between two documents, not a post-hoc edit to a result anyone has
+seen.
+
+Alongside the fix, `apps/engine/config/ground-truth.json` is committed:
+the frozen per-(grid_cell, action) true recovery probability table the
+protocol promised but never had. Full reasoning lives in the file itself
+and is referenced from EXPERIMENT-PROTOCOL.md's `## Ground truth` section;
+briefly: the table is the full 7×5 grid_cell × action cross product, not
+just each cell's one designated action, because the control arm is
+explicitly grid-unaware (always `retry_with_backoff`, per `## Assignment`)
+and can apply a mismatched action to any cell. Those mismatched-retry
+values are what give the treatment arm (grid-aware) any true lift at all,
+and were tuned once: a first draft implied only ≈3.9pp of weighted true
+lift, discovered too weak against the protocol's own "N=2000 gives ~80%
+power to detect 6pp" line — the CI would rarely come near zero and the
+calibration check would be uninformative. On inspection the draft had
+quietly credited the control arm with "waiting it out" benefit it
+structurally cannot get: `CONTROL_ARM_GUARDRAIL_CONFIG.attemptSpacing.baseMs
+= 0` (gateway guardrails config) means control retries with zero delay.
+Lowering the control-arm value specifically on the two time/method-dependent
+cells (`gateway/authentication`, `bank/payment_authorization`) to reflect
+that honestly moved the weighted true lift to ≈6.82pp — a reasoning
+correction, not a fit to the target.
+
+That total decomposes as +7.82pp gross from the two mismatched-retry cells
+above, minus -1.00pp from the two customer cells (`customer/payment_authorization`,
+`customer/payment_authentication`), where the grid-aware treatment action
+is `nudge_no_auto_retry`. The negative drag is structural, not an error:
+this population scores only whether the one modelled attempt recovers, and
+`nudge_no_auto_retry` never re-presents the payment, so correctly declining
+to retry cannot register as a recovery in this world — even though
+control's blind, zero-delay retry occasionally gets lucky on the same
+cell. The measured true lift therefore UNDERSTATES whatever a full
+multi-attempt policy simulation would show, and the bias runs against the
+treatment arm, never for it. Worth remembering when a later session
+interprets the calibration check's headline number.
+
+## 2026-08-27 Corrected true-lift figure: 6.82pp was wrong, 5.47pp is computed and cross-checked
+
+The entry directly above this one stated the ground-truth table's weighted
+true lift as +7.82pp gross / -1.00pp drag / +6.82pp net, computed by hand
+from the raw config probabilities as a single-attempt calculation. That
+figure was wrong, for two independent reasons, caught by independent
+verification (a Monte Carlo simulation over 400,000 `Beta(2, 3)` draws)
+before any experiment ran — this is the second bug in this project found
+by reasoning about the world rather than by running something, after the
+double-settle race (this log, entry 10), and like that one it would have
+corrupted a headline number rather than failing loudly.
+
+**Cause 1: a Jensen's-inequality gap in the modulation formula's
+centering, not a bug in the formula itself.**
+`outcomes.modulated_probability` shifts `logit(p_true)` by
+`logit(customer_prior) - logit(mean_prior)`, where `mean_prior = 0.4` is
+`Beta(2, 3)`'s mean. That formula is correct and unchanged — it is the
+right shift for one customer. But averaged across the whole population, a
+config probability does not realise at its stated value: `E[logit(X)]` for
+`X ~ Beta(2, 3)` is `psi(2) - psi(3) = -0.5` exactly (`psi` = digamma;
+confirmed both symbolically and by quadrature), not `logit(E[X]) =
+logit(0.4) = -0.4055`. Because `logit` is neither convex nor concave over
+the whole of `Beta(2, 3)`'s support (concave below 0.5, convex above, and
+most of the mass sits below 0.5), `E[logit(X)] != logit(E[X])`, so every
+transaction receives a systematic downward log-odds shift the hand
+calculation never accounted for. Concretely: a configured 0.55 (
+`gateway/payment_authorization`'s home probability) does not realise as
+0.55 across the population.
+
+**Cause 2: the hand calculation silently assumed one attempt per arm.**
+EXPERIMENT-PROTOCOL.md's control arm makes "up to 3 attempts," and the
+attempt cap applies equally to the treatment arm's own retry actions (the
+same `MAX_ATTEMPTS = 3` guardrail bound, `apps/gateway/src/guardrails/config.ts`
+`DEFAULT_GUARDRAIL_CONFIG.maxAttempts` / `CONTROL_ARM_GUARDRAIL_CONFIG`'s —
+only `attemptSpacing` differs between the two arms). The protocol never
+stated this attempt count anywhere near the ground-truth table, and the
+lift arithmetic was computed as if it didn't matter. It matters a great
+deal: `customer_prior` is a LATENT PER-CUSTOMER trait, fixed across all of
+one customer's own attempts, so the correct compounding
+(`1 - (1-p)^K`, "at least one success in K i.i.d. attempts") has to happen
+INSIDE the integral over `customer_prior`, per customer, before averaging
+— not on the population-average per-attempt probability. `1 - (1-p)^K` is
+concave in `p` for `K > 1`, so averaging first (the easy shortcut)
+understates the compounded figure by Jensen's inequality a second time.
+Both effects push in the SAME direction on the two customer cells: control
+compounds its small blind-retry probability over up to 3 tries
+(`customer/payment_authorization`'s configured 0.03 realises 0.1145), while
+treatment (`nudge_no_auto_retry`) stays exactly 0.0 regardless of attempt
+count (RULE 1, ground-truth.json) — so the negative drag from those two
+cells grew from the hand-computed -1.00pp to a properly-computed -3.85pp.
+
+**Fix, per the instruction that produced it: change how the lift is
+stated, not the world.** Neither `ground-truth.json`'s probability values
+nor `modulated_probability`'s form changed — both were already
+well-reasoned and are frozen. Three things were added instead:
+
+1. Attempt semantics are now pinned explicitly in
+   EXPERIMENT-PROTOCOL.md's `## Assignment` section: control makes up to
+   `MAX_ATTEMPTS = 3` attempts of `retry_with_backoff`; treatment makes up
+   to the same cap for a retry action, or 0 attempts for
+   `nudge_no_auto_retry` / `never_retry`. The lift figure is meaningless
+   without this and it was previously unstated.
+2. `apps/engine/src/revenant_engine/true_lift.py` computes the true lift
+   IN CODE: `realised_recovery_probability` integrates
+   `1 - (1-modulated_probability(p_true, prior))^K` over `customer_prior
+   ~ Beta(2, 3)` by numerical quadrature (`scipy.integrate.quad`), per
+   cell, reading `p_true` from `ground-truth.json` and `K` from the pinned
+   attempt semantics; `compute_true_lift` weights each cell by
+   `population.grid_cell_weights` and sums. A hand-computed figure in a
+   JSON comment can drift from the code silently; this cannot, because
+   there is no longer a hand-computed figure — only this function's
+   output.
+3. `tests/test_true_lift.py` cross-checks every cell's computed figure,
+   and the net total, against an INDEPENDENTLY reimplemented (not
+   imported) Monte Carlo simulation at `N = 400,000` — matching the scale
+   of the verification that caught the original error — within 5 standard
+   errors. A regression test
+   (`test_naive_single_attempt_arithmetic_understates_the_negative_drag`)
+   pins the direction of the original error permanently: naive
+   single-attempt config arithmetic must always show a smaller-magnitude
+   drag than the properly-computed figure, or the fix itself has
+   regressed.
+
+**Corrected figures**, computed by `compute_true_lift()` and confirmed
+against the independent Monte Carlo cross-check: **+9.32pp gross**
+(`gateway/authentication` +2.98pp, `bank/payment_authorization` +6.34pp)
+minus **-3.85pp drag** (`customer/payment_authorization` -3.12pp,
+`customer/payment_authentication` -0.73pp), netting **+5.47pp** — close to
+the independent verification's own "about 5.5pp" and still within
+EXPERIMENT-PROTOCOL.md's stated 5-8pp target, now at the lower edge rather
+than mid-range. `ground-truth.json`'s `weighted_true_lift` block and
+EXPERIMENT-PROTOCOL.md's `## Ground truth` section both carry the
+corrected figures and state plainly that they are realised expectations
+under modulation and the pinned attempt counts, never raw single-attempt
+config arithmetic — with at least one explicit example
+(`gateway/payment_authorization`: configured 0.55, realises 0.8289) so a
+reader cannot mistake a config value for a population rate again.
+
+No experiment has ever run against this table, so — same as the six-to-seven
+grid correction above — no result is invalidated. This entry exists so the
+error, why it happened, and how it was caught are on record before one
+ever does.
