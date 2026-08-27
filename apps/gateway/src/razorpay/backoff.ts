@@ -126,21 +126,43 @@ export const policyFor = (kind: FailureKind): BackoffPolicy =>
   kind === 'rate_limited' ? RATE_LIMIT_BACKOFF : TRANSIENT_BACKOFF;
 
 /**
+ * Sanity ceiling on an HONOURED Retry-After, one hour. No real Razorpay
+ * response has ever asked for more than 40s (docs/API-BEHAVIOUR.md), and
+ * honouring the header "outright, even when longer than the fallback
+ * policy would give" (see delayForFailure's own test of that name, which
+ * uses 120s) is about trusting a genuine several-minute instruction, not
+ * about blindly sleeping on a corrupted or adversarial value — a NaN, a
+ * negative number, or Infinity would otherwise pass `!== undefined`
+ * unchecked. Node's own setTimeout silently clamps a delay past roughly
+ * 24.8 days rather than honouring it, so an unbounded pass-through would
+ * fail confusingly instead of falling back to a bounded, well-understood
+ * policy.
+ */
+const MAX_HONOURED_RETRY_AFTER_MS = 60 * 60 * 1_000;
+
+/**
  * How long to wait before retrying `failure`.
  *
- * `retry_after_seconds`, when present, wins outright: Razorpay sent
- * `Retry-After: 3` on an /orders 429 while the old policy waited a fixed
- * 40 seconds regardless, roughly 13x too slow. The exponential policy
- * (with jitter) only runs when the header is absent, which is the
- * exception, not the common case.
+ * `retry_after_seconds`, when present AND sane, wins outright: Razorpay
+ * sent `Retry-After: 3` on an /orders 429 while the old policy waited a
+ * fixed 40 seconds regardless, roughly 13x too slow. The exponential
+ * policy (with jitter) runs whenever the header is absent, non-finite,
+ * negative, or past MAX_HONOURED_RETRY_AFTER_MS — the exception, not the
+ * common case, and never a case that can produce NaN or a negative delay.
  */
 export const delayForFailure = (
   failure: Failure,
   attempt: number,
   random: () => number = Math.random,
 ): number => {
-  if (failure.retry_after_seconds !== undefined) {
-    return failure.retry_after_seconds * 1_000;
+  const raw = failure.retry_after_seconds;
+  if (
+    raw !== undefined &&
+    Number.isFinite(raw) &&
+    raw >= 0 &&
+    raw * 1_000 <= MAX_HONOURED_RETRY_AFTER_MS
+  ) {
+    return raw * 1_000;
   }
   const policy = policyFor(failure.kind);
   return backoffDelayMs(attempt, policy, random);

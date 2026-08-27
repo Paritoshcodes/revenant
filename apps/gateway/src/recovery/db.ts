@@ -112,23 +112,45 @@ export const insertDecision = async (
 
 type ClosingStatus = Extract<TransactionStatus, 'recovered' | 'abandoned' | 'terminal'>;
 
+/**
+ * `'closed'`: this call was the one that moved the transaction from
+ * `open` — the caller should write its own `transaction_closed` audit
+ * event. `'already_closed'`: a racing caller already did that (the same
+ * settle race that motivates `SettleResult` in idempotency-store.ts can
+ * also race two closeTransaction calls); the caller must NOT write a
+ * second audit event. See docs/DECISIONS.md, Build log entry 10.
+ */
+export type CloseTransactionResult = 'closed' | 'already_closed';
+
 export const closeTransaction = async (
   db: Queryable,
   transactionId: string,
   status: ClosingStatus,
-): Promise<Result<void>> => {
+): Promise<Result<CloseTransactionResult>> => {
   try {
-    const result = await db.query('UPDATE transactions SET status = $2 WHERE id = $1', [
+    // AND status = 'open' is the guard: a racing close for the same
+    // transaction finds 0 rows here rather than silently re-closing (and
+    // silently re-auditing) an already-closed transaction.
+    const result = await db.query(
+      "UPDATE transactions SET status = $2 WHERE id = $1 AND status = 'open'",
+      [transactionId, status],
+    );
+    if (result.rowCount !== 0) {
+      return ok('closed' as const);
+    }
+
+    // 0 rows: either the transaction doesn't exist, or it does but is no
+    // longer 'open'. Distinguish the two.
+    const existing = await db.query('SELECT 1 FROM transactions WHERE id = $1', [
       transactionId,
-      status,
     ]);
-    if (result.rowCount === 0) {
+    if (existing.rows.length === 0) {
       return err<Failure>({
         kind: 'not_found',
         message: `closeTransaction: no transaction ${transactionId}`,
       });
     }
-    return ok(undefined);
+    return ok('already_closed' as const);
   } catch (cause) {
     return err(toFailure(cause, 'closeTransaction'));
   }

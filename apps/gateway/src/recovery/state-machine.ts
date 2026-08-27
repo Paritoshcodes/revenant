@@ -81,16 +81,18 @@ export const runRecoveryStep = async (
       const closed = await closeTransaction(client, input.transactionId, plan.closingStatus);
       if (!closed.ok) return closed;
 
-      const closedAudit = await appendAuditEvent(client, {
-        kind: 'transaction_closed',
-        timestamp,
-        transaction_id: input.transactionId,
-        arm: input.arm,
-        final_status: plan.closingStatus,
-        attempts_made: input.attemptNumber - 1,
-        narrative: null,
-      });
-      if (!closedAudit.ok) return closedAudit;
+      if (closed.value === 'closed') {
+        const closedAudit = await appendAuditEvent(client, {
+          kind: 'transaction_closed',
+          timestamp,
+          transaction_id: input.transactionId,
+          arm: input.arm,
+          final_status: plan.closingStatus,
+          attempts_made: input.attemptNumber - 1,
+          narrative: null,
+        });
+        if (!closedAudit.ok) return closedAudit;
+      }
     }
 
     return ok({
@@ -126,16 +128,18 @@ export const runRecoveryStep = async (
       const closed = await closeTransaction(client, input.transactionId, plan.closingStatus);
       if (!closed.ok) return closed;
 
-      const closedAudit = await appendAuditEvent(client, {
-        kind: 'transaction_closed',
-        timestamp,
-        transaction_id: input.transactionId,
-        arm: input.arm,
-        final_status: plan.closingStatus,
-        attempts_made: input.attemptNumber - 1,
-        narrative: null,
-      });
-      if (!closedAudit.ok) return closedAudit;
+      if (closed.value === 'closed') {
+        const closedAudit = await appendAuditEvent(client, {
+          kind: 'transaction_closed',
+          timestamp,
+          transaction_id: input.transactionId,
+          arm: input.arm,
+          final_status: plan.closingStatus,
+          attempts_made: input.attemptNumber - 1,
+          narrative: null,
+        });
+        if (!closedAudit.ok) return closedAudit;
+      }
     }
 
     return ok({
@@ -199,38 +203,46 @@ export const runRecoveryStep = async (
   });
   if (!settled.ok) return settled;
 
-  const settleAudited = await appendAuditEvent(client, {
-    kind: 'attempt_settled',
-    timestamp: settleTimestamp,
-    transaction_id: input.transactionId,
-    arm: input.arm,
-    attempt_number: input.attemptNumber,
-    idempotency_key: idempotencyKey,
-    rzp_payment_id: execution.value.rzpPaymentId,
-    rzp_response_id: execution.value.rzpResponseId,
-    error_code: execution.value.errorCode,
-    error_source: execution.value.errorSource,
-    error_step: execution.value.errorStep,
-    error_reason: execution.value.errorReason,
-    auth_code: execution.value.authCode,
-    outcome: execution.value.outcome,
-  });
-  if (!settleAudited.ok) return settleAudited;
+  // A racing settle (the driver's own flow and a reconciliation run can
+  // both reach here for the same attempt, docs/DECISIONS.md Build log
+  // entry 10) already wrote this event — only the caller whose settle
+  // actually transitioned pending -> settled writes it.
+  if (settled.value.status === 'settled') {
+    const settleAudited = await appendAuditEvent(client, {
+      kind: 'attempt_settled',
+      timestamp: settleTimestamp,
+      transaction_id: input.transactionId,
+      arm: input.arm,
+      attempt_number: input.attemptNumber,
+      idempotency_key: idempotencyKey,
+      rzp_payment_id: execution.value.rzpPaymentId,
+      rzp_response_id: execution.value.rzpResponseId,
+      error_code: execution.value.errorCode,
+      error_source: execution.value.errorSource,
+      error_step: execution.value.errorStep,
+      error_reason: execution.value.errorReason,
+      auth_code: execution.value.authCode,
+      outcome: execution.value.outcome,
+    });
+    if (!settleAudited.ok) return settleAudited;
+  }
 
   if (settlement.finalStatus !== null) {
     const closed = await closeTransaction(client, input.transactionId, settlement.finalStatus);
     if (!closed.ok) return closed;
 
-    const closedAudit = await appendAuditEvent(client, {
-      kind: 'transaction_closed',
-      timestamp: settleTimestamp,
-      transaction_id: input.transactionId,
-      arm: input.arm,
-      final_status: settlement.finalStatus,
-      attempts_made: input.attemptNumber,
-      narrative: null,
-    });
-    if (!closedAudit.ok) return closedAudit;
+    if (closed.value === 'closed') {
+      const closedAudit = await appendAuditEvent(client, {
+        kind: 'transaction_closed',
+        timestamp: settleTimestamp,
+        transaction_id: input.transactionId,
+        arm: input.arm,
+        final_status: settlement.finalStatus,
+        attempts_made: input.attemptNumber,
+        narrative: null,
+      });
+      if (!closedAudit.ok) return closedAudit;
+    }
   }
 
   return ok({

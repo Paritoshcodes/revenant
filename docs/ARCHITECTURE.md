@@ -156,3 +156,74 @@ fetching the payment from Razorpay, never by assuming it failed.
 
 `audit_log.hash` = sha256(prev_hash + canonical_json(payload)). Genesis row
 has prev_hash = 64 zeros.
+
+## Regression suite
+
+`apps/gateway/tests/` is three tiers, each with its own vitest config and
+npm script. A missing prerequisite for the db or live tier is always a
+**failing** test with an actionable message, never a silent skip — a
+silently skipped test is worse than no test.
+
+    tests/unit/   requires nothing              npm test        (fast, the default)
+    tests/db/     requires DATABASE_URL          npm run test:db
+    tests/live/   requires RUN_LIVE_TESTS=1,      RUN_LIVE_TESTS=1 npm run test:live
+                  live Razorpay creds, Playwright,
+                  and (webhook-delivery only) a
+                  reachable public tunnel
+
+`npm run test:all` runs all three in order, stopping at the first failure.
+
+**tests/unit/** — pure, no I/O, no network, no database. Every guardrail,
+the hash chain verifier, the estimators, the backoff/retry policy. Run on
+every change.
+
+**tests/db/** — a live Postgres. Every file rolls back its own transaction
+and leaves zero rows behind, with one deliberate exception:
+`audit-concurrency.test.ts` proves `appendAuditEvent`'s advisory lock
+serialises genuinely separate connections, which needs each connection to
+really commit for the others to see its row — and `audit_log`'s
+append-only trigger means those rows can never be deleted afterward either.
+Small (5 rows) and tagged, documented in the file itself. A second file,
+`idempotency-concurrency.test.ts`, and `settle-race.test.ts` /
+`reconcile-race.test.ts`'s concurrent cases similarly need a real committed
+winner to prove "exactly one succeeds" against a real unique constraint or
+a real racing settle — those clean up explicitly (`DELETE`, verified by a
+zero-row follow-up `SELECT`) since `attempts`/`transactions` carry no
+append-only trigger. Run before merging anything touching `src/recovery`
+or `src/audit`.
+
+**tests/live/** — live Razorpay test mode and a real Playwright browser.
+`checkout-outcome.live.test.ts` compares the driver's reported outcome
+against Razorpay's own recorded payment status for a first attempt, a
+success, and a same-session fail-then-retry sequence — the one test that
+checks the driver against Razorpay itself rather than a fixture.
+`webhook-delivery.live.test.ts` additionally needs the public tunnel
+(`WEBHOOK_PUBLIC_URL`) actually reachable: it starts the gateway and a
+zrok share itself if neither is already running (reusing either one it
+finds already up), releasing a stale share left over from a prior session
+the same way `scripts/webhooks-up.mts` does, and fails loudly if the
+tunnel never comes up rather than skipping. Real browser-driven test-mode
+payments and real network calls to Razorpay and zrok mean this tier is
+occasionally flaky for reasons outside the code's control (a slow popup
+navigation, a transient connection timeout) — that is a property of
+testing against real third-party infrastructure, the same lesson
+DECISIONS.md's build log draws from nine driver bugs found only by live
+runs, not a reason to add a retry that could mask a real regression. Run
+before a demo, or after touching `src/browser` or `src/webhooks`.
+
+**New features add their test to the tier matching what they touch.** Pure
+logic goes in `tests/unit/`. Anything that reads or writes Postgres goes in
+`tests/db/`. Anything that drives a real browser or calls the real Razorpay
+API goes in `tests/live/`.
+
+**A sharp edge this suite closed, not just documented:** `settle()`
+(idempotency-store.ts) and `closeTransaction()` (recovery/db.ts) used to
+have no guard against being called twice for the same attempt or
+transaction — a real risk once anything besides the driver's own flow
+(reconciliation, most plausibly triggered by a webhook) can reach a settle
+for the same attempt. Both now return a discriminated result
+(`settled`/`already_settled`, `closed`/`already_closed`) so a racing
+caller finds out it was the loser rather than silently double-writing an
+`attempt_settled` or `transaction_closed` audit event. See
+docs/DECISIONS.md, Build log entry 10, and
+`tests/db/settle-race.test.ts` / `tests/db/reconcile-race.test.ts`.

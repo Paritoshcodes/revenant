@@ -62,6 +62,22 @@ export type Reservation =
       readonly existing: ReservedAttempt | null;
     };
 
+/**
+ * The driver's own flow (state-machine.ts, right after an attempt executes)
+ * and a reconciliation run (reconcile.ts, the realistic response to a
+ * webhook or any other out-of-band signal) can both reach a settle for the
+ * same attempt if the driver is still mid-flight when reconciliation runs.
+ * `settled` means THIS call was the one that moved the row from `pending`
+ * to a terminal outcome — the caller should write its own `attempt_settled`
+ * audit event. `already_settled` means a racing caller already did that
+ * (or this call is a harmless repeat): `attempt` is the row as it now
+ * stands, not an error, and the caller must NOT write a second audit event
+ * for it. See docs/DECISIONS.md, Build log entry 10.
+ */
+export type SettleResult =
+  | { readonly status: 'settled'; readonly attempt: ReservedAttempt }
+  | { readonly status: 'already_settled'; readonly attempt: ReservedAttempt };
+
 export interface SettleInput {
   readonly outcome: SettledOutcome;
   readonly rzpPaymentId?: string | null;
@@ -81,7 +97,7 @@ export interface IdempotencyStore {
     transactionId: string,
     attemptNumber: number,
   ): Promise<Result<Reservation>>;
-  settle(key: string, input: SettleInput): Promise<Result<ReservedAttempt>>;
+  settle(key: string, input: SettleInput): Promise<Result<SettleResult>>;
   lookup(key: string): Promise<Result<ReservedAttempt | null>>;
 }
 
@@ -144,6 +160,11 @@ const RESERVE_SQL = `INSERT INTO attempts (transaction_id, attempt_number, idemp
      ON CONFLICT (idempotency_key) DO NOTHING
      RETURNING id`;
 
+// AND outcome = 'pending' is the guard that makes this call-again-safe: a
+// racing settle() for the same key (docs/DECISIONS.md, Build log entry 10)
+// finds 0 rows here rather than silently overwriting an already-settled
+// row, and settle() below turns that into 'already_settled' rather than a
+// second success.
 const SETTLE_SQL = `UPDATE attempts
         SET outcome        = $2,
             rzp_payment_id = COALESCE($3, rzp_payment_id),
@@ -152,7 +173,7 @@ const SETTLE_SQL = `UPDATE attempts
             error_step     = COALESCE($6, error_step),
             error_reason   = COALESCE($7, error_reason),
             auth_code      = COALESCE($8, auth_code)
-      WHERE idempotency_key = $1
+      WHERE idempotency_key = $1 AND outcome = 'pending'
   RETURNING ${SELECT_COLUMNS}`;
 
 export const createIdempotencyStore = (db: Queryable): IdempotencyStore => {
@@ -226,13 +247,28 @@ export const createIdempotencyStore = (db: Queryable): IdempotencyStore => {
         ]);
 
         const row = result.rows[0] as AttemptRow | undefined;
-        if (row === undefined) {
+        if (row !== undefined) {
+          return ok({ status: 'settled' as const, attempt: toReservedAttempt(row) });
+        }
+
+        // 0 rows: either no reservation ever held this key, or it did but
+        // is no longer 'pending' — most likely a racing caller (the
+        // driver's own flow and a reconciliation run can both reach a
+        // settle for the same attempt, docs/DECISIONS.md Build log entry
+        // 10) already settled it. Distinguish the two rather than
+        // assuming failure.
+        const existing = await lookup(key);
+        if (!existing.ok) return existing;
+        if (existing.value === null) {
           return err<Failure>({
             kind: 'not_found',
             message: `settle ${key}: no reserved attempt with that key`,
           });
         }
-        return ok(toReservedAttempt(row));
+        // Idempotent, not an error: the fact being recorded (this payment
+        // settled) is still true, just already written. The caller must
+        // not write a second attempt_settled audit event for it.
+        return ok({ status: 'already_settled' as const, attempt: existing.value });
       } catch (cause) {
         return err(toFailure(cause, `settle ${key}`));
       }

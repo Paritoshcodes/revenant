@@ -1207,3 +1207,60 @@ Fixed: exit non-zero only when `runBatch()` itself returns `!ok` (link
 creation failed outright, or similar) — a completed run that printed its
 summary is a success regardless of what happened inside it. Per-transaction
 errors are still counted and printed, just no longer fatal to the process.
+
+## Build log entry 10: double-settle on a race between the driver and reconciliation, found before it ever ran
+
+`idempotency-store.ts`'s `settle()` was `UPDATE attempts SET outcome=...
+WHERE idempotency_key=$1` — no check the row was still `pending`.
+`recovery/db.ts`'s `closeTransaction` was `UPDATE transactions SET
+status=$2 WHERE id=$1` — no check it was still `open`. Both are
+call-again-safe only by accident, if nothing ever calls them twice for the
+same key. Something can: the driver's own flow (`state-machine.ts`, right
+after `executor.execute()` returns) and a reconciliation run
+(`reconcile.ts` — the realistic response when a webhook or any other
+out-of-band signal says it's worth checking Razorpay's own record for a
+transaction) can both reach a settle for the same attempt if the driver is
+still mid-flight when that reconciliation runs. Whichever arrives second
+still finds a matching `idempotency_key`, and neither `WHERE` clause
+checked the row's current state, so it still succeeded. Both callers then
+unconditionally wrote their own `attempt_settled` audit event, and if the
+second racer's settle also closed the transaction, a second
+`transaction_closed` too.
+
+**Why it mattered.** CLAUDE.md hard rule 6 is never to report a recovery
+figure without knowing exactly what it counts. A double `attempt_settled`
+for one real attempt is a double-counted recovery for anything downstream
+that sums audit events rather than re-querying `attempts` directly — and
+even before any such consumer exists, it makes the audit log itself, the
+thing this project's tamper-evidence and narrative claims both lean on,
+describe an event that happened once as if it happened twice.
+
+**How it was found.** Not by a live run, and not by an existing test going
+red — every bug in this log through entry 9 was found one of those two
+ways. This one was found by writing a test that didn't exist yet: closing
+a gap in the regression suite ("assert a webhook-driven settle and a
+driver-driven settle for the same payment produce exactly one settled
+attempt, not two") required first asking what actually stops two settles
+from both succeeding, and reading `SETTLE_SQL` and `closeTransaction`'s
+`UPDATE` answered: nothing did. The project's first bug found by reasoning
+about a race directly, rather than by reproducing one.
+
+**Fix.** `idempotency-store.ts`: `SETTLE_SQL` gained `AND outcome =
+'pending'`; `settle()` now returns `{status:'settled', attempt} |
+{status:'already_settled', attempt}` instead of a bare `ReservedAttempt` —
+a race's loser gets the row back as it now stands, not an error, the same
+idempotent shape `reserve()` already used for its own `reserved`/
+`duplicate` split. `recovery/db.ts`: `closeTransaction`'s `UPDATE` gained
+`AND status = 'open'`; it returns `Result<'closed' | 'already_closed'>`
+(was `Result<void>`). The two call sites — `state-machine.ts` (1 settle, 3
+closeTransaction) and `reconcile.ts` (1 settle, 1 closeTransaction),
+confirmed the only ones in the repo by grepping every `.settle(`/
+`closeTransaction(` call including `scripts/run-batch.mts`, which sits
+outside `tsc -b`'s coverage and was checked by hand (it calls only
+`runBatch()`, which itself imports nothing from `idempotency-store.ts` and
+never calls `closeTransaction` directly) — now write `attempt_settled`/
+`transaction_closed` only on the variant that actually did the work.
+`tests/db/settle-race.test.ts` and `tests/db/reconcile-race.test.ts`
+exercise both call orderings and real concurrent racers against the fix;
+`tests/unit/idempotency-store.test.ts` gained a case for the
+`already_settled` path directly.

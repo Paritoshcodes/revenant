@@ -266,25 +266,32 @@ export const reconcileTransaction = async (
     if (!settled.ok) return settled;
 
     const timestamp = new Date(now()).toISOString();
-    const settleAudited = await appendAuditEvent(db, {
-      kind: 'attempt_settled',
-      timestamp,
-      transaction_id: transactionId,
-      arm: transaction.arm as Arm,
-      attempt_number: attempt.attemptNumber,
-      idempotency_key: attempt.idempotencyKey,
-      rzp_payment_id: settleInput.rzpPaymentId ?? null,
-      // Nothing was written to Razorpay here, only read: there is no fresh
-      // request id to report, unlike a live settlement.
-      rzp_response_id: null,
-      error_code: settleInput.errorCode ?? null,
-      error_source: settleInput.errorSource ?? null,
-      error_step: settleInput.errorStep ?? null,
-      error_reason: settleInput.errorReason ?? null,
-      auth_code: settleInput.authCode ?? null,
-      outcome: settleInput.outcome,
-    });
-    if (!settleAudited.ok) return settleAudited;
+
+    // A racing settle (the driver's own flow can reach the same attempt at
+    // the same moment reconciliation does, docs/DECISIONS.md Build log
+    // entry 10) already wrote this event — only the caller whose settle
+    // actually transitioned pending -> settled writes it.
+    if (settled.value.status === 'settled') {
+      const settleAudited = await appendAuditEvent(db, {
+        kind: 'attempt_settled',
+        timestamp,
+        transaction_id: transactionId,
+        arm: transaction.arm as Arm,
+        attempt_number: attempt.attemptNumber,
+        idempotency_key: attempt.idempotencyKey,
+        rzp_payment_id: settleInput.rzpPaymentId ?? null,
+        // Nothing was written to Razorpay here, only read: there is no fresh
+        // request id to report, unlike a live settlement.
+        rzp_response_id: null,
+        error_code: settleInput.errorCode ?? null,
+        error_source: settleInput.errorSource ?? null,
+        error_step: settleInput.errorStep ?? null,
+        error_reason: settleInput.errorReason ?? null,
+        auth_code: settleInput.authCode ?? null,
+        outcome: settleInput.outcome,
+      });
+      if (!settleAudited.ok) return settleAudited;
+    }
 
     if (transactionStatus === 'open') {
       const settlementPlan = planSettlement(settleInput.outcome);
@@ -293,16 +300,18 @@ export const reconcileTransaction = async (
         if (!closed.ok) return closed;
         transactionStatus = settlementPlan.finalStatus;
 
-        const closedAudited = await appendAuditEvent(db, {
-          kind: 'transaction_closed',
-          timestamp,
-          transaction_id: transactionId,
-          arm: transaction.arm as Arm,
-          final_status: settlementPlan.finalStatus,
-          attempts_made: attempt.attemptNumber,
-          narrative: null,
-        });
-        if (!closedAudited.ok) return closedAudited;
+        if (closed.value === 'closed') {
+          const closedAudited = await appendAuditEvent(db, {
+            kind: 'transaction_closed',
+            timestamp,
+            transaction_id: transactionId,
+            arm: transaction.arm as Arm,
+            final_status: settlementPlan.finalStatus,
+            attempts_made: attempt.attemptNumber,
+            narrative: null,
+          });
+          if (!closedAudited.ok) return closedAudited;
+        }
       }
     }
 
