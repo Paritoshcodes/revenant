@@ -7,6 +7,7 @@ taking credit for payments that would have recovered anyway.
 ## Read before working
 
 - @docs/PLAN.md              thesis, what wins, day-by-day schedule
+- @docs/DESIGN-BRIEF.md      dashboard design brief, for the 1 Sept UI work only
 - @docs/ARCHITECTURE.md      layers, services, policy grid, guardrails, audit
 - @docs/API-BEHAVIOUR.md     Razorpay API behaviour, verified live
 - @docs/EXPERIMENT-PROTOCOL.md  FROZEN experiment parameters

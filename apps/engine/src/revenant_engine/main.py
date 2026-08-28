@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from revenant_contracts import observed_reasons, policy_grid
 
+from .policy import Diagnosis, ProposedAction, propose_action
 from .population import Population, generate_population
 
 app = FastAPI(title="revenant-engine", version="0.0.0")
@@ -44,3 +45,11 @@ def population(request: PopulationRequest) -> Population:
     ESTIMATED (synthetic), never OBSERVED -- CLAUDE.md hard rule 6."""
     seed = request.seed if request.seed is not None else secrets.randbits(63)
     return generate_population(request.n, seed=seed)
+
+
+@app.post("/propose")
+def propose(diagnosis: Diagnosis) -> ProposedAction:
+    """Proposes an action for one diagnosis via policy.propose_action.
+    Routing only -- see policy.py for the decision logic. NOT wired to the
+    gateway in this session; that is separate, later integration work."""
+    return propose_action(diagnosis)

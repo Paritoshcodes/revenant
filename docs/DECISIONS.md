@@ -1421,3 +1421,102 @@ No experiment has ever run against this table, so — same as the six-to-seven
 grid correction above — no result is invalidated. This entry exists so the
 error, why it happened, and how it was caught are on record before one
 ever does.
+
+## 2026-08-28 The recovery model was main-effects-only: flat probabilities across actions, caught before the policy shipped
+
+`apps/engine/src/revenant_engine/model.py`'s first version fit a logistic
+regression over `error_source`, `error_step` and `action` as separate
+one-hot features, no interaction between them. A pure main-effects model
+cannot represent an action's effectiveness DEPENDING on the failure
+class — the coefficient for `action=retry_prompt_alternate` is a single
+number added identically regardless of cell. Verified directly: the
+backoff-vs-alternate log-odds gap was **+0.0020 in every one of the four
+non-terminal, non-customer cells, identical to four decimals** — the
+unmistakable signature of a main-effects-only fit. The model's predicted
+probabilities were correspondingly nearly flat within a cell (e.g.
+`gateway/authentication`: 0.2601 / 0.2605 / 0.2723 across the three retry
+actions) while the realised ground truth varies enormously (0.2061 /
+0.4663 / 0.1459 for the same three) — the model had no way to know that
+`retry_prompt_alternate` is the right tool for an authentication failure
+and a poor one for a timing-sensitive bank decline, because
+ground-truth.json's whole design (see the 2026-08-27 entries above)
+depends on exactly that interaction reversing between cells.
+
+**Why it mattered, twice over.** First, the reported held-out
+accuracy/log-loss looked fine (0.86 / 0.25) despite the model being
+badly wrong about WHICH action to prefer — accuracy on a five-action
+label set dominated by the always-zero nudge/never_retry rows and by
+cells where any retry beats no-retry hides an interaction failure that
+only shows up when you compare actions WITHIN a cell, which no test did.
+Second, and more seriously: the session that built policy.py had
+deliberately kept `candidate_actions` a singleton (one action per cell,
+taken directly from the grid) specifically because a flat model made a
+genuine multi-way argmax pointless and risked the policy always
+preferring a blind retry over `nudge_no_auto_retry` (which is exactly
+`0.0` by construction, RULE 1 — see the 2026-08-27 entry above — and can
+never win against a retry action with ANY positive probability). The
+singleton design meant the model's flaw was invisible to every existing
+test: `propose_action` always returned the grid's own action regardless
+of what the model estimated, so "the policy never proposes an action the
+grid forbids" passed trivially whether the model was right or wrong.
+
+**An earlier, incorrect explanation.** Before the interaction gap was
+found, the flat-looking probabilities were attributed (in conversation,
+not committed to this file) to the same modulation downward bias the
+2026-08-27 true-lift correction records. That explanation is WRONG and
+is recorded here as wrong rather than left ambiguous: modulation bias
+predicts every action's probability shifting down together, not the
+relative ordering between actions within a cell going flat. It explains
+part of `gateway/payment_authorization`'s gap (model 0.5028 vs realised
+0.5242) but nothing about `gateway/authentication` (model 0.2610 vs
+realised 0.4663 for the actually-best action) — a difference of kind,
+not degree, that modulation cannot produce. No DECISIONS.md entry ever
+stated the wrong explanation, so there is nothing to retract in an
+earlier entry, only this note not to repeat it.
+
+**Fix, three parts.**
+
+1. `feature_dict` gained a `cell_action` feature (`grid_cell + "|" +
+   action`, one-hot encoded like everything else) — an explicit
+   interaction term. Still a plain logistic regression with readable
+   coefficients, never a black-box learner: the fix is one more feature,
+   not a different model family. Re-verified directly: the same
+   `gateway/authentication` gap is now model 0.2141 / 0.4578 / 0.1237
+   against realised 0.2061 / 0.4663 / 0.1459 — same ranking, closely
+   tracking magnitude, for all six non-terminal cells.
+2. `policy.py`'s `candidate_actions` was redesigned (its own module
+   docstring calls this "design (b)", stated as a deliberate, non-silent
+   choice per the instruction that produced it): a terminal cell or a
+   cell whose grid action is `nudge_no_auto_retry` stays locked to that
+   one action (the grid's "do not auto-retry" judgement for
+   customer-class and terminal failures is not second-guessed), but the
+   four cells whose grid action is one of the three retries now get a
+   genuine three-way comparison, with the model's own per-action
+   estimate deciding the winner. On today's ground-truth table this
+   happens to reproduce the grid's own action on all four flexible
+   cells — a fact about today's numbers, stated as such, not a guarantee
+   the code enforces. If ground-truth.json ever changes such that a
+   mismatched retry beats a cell's home action, the policy would now
+   propose the mismatch, and `true_lift.py`'s calibration figure (which
+   assumes treatment follows the grid's static action) would need
+   recomputing against what the policy actually does.
+3. `tests/test_model.py::test_model_ranks_actions_correctly_within_each_non_terminal_cell`
+   compares the model's chosen action, per non-terminal cell, against
+   `true_lift.realised_recovery_probability(cell, action,
+   max_attempts=1)` — the single-attempt realised truth, matching what
+   the model is actually trained to predict. Confirmed to fail on the
+   pre-fix model (reproduced directly: `gateway/authentication` alone
+   misses by a 0.32 gap, the tolerance is 0.05) and pass after. Uses a
+   value tolerance rather than exact action-name equality specifically
+   because `customer/payment_authentication`'s three retry actions are
+   configured identically in ground-truth.json (all 0.02 — "no automated
+   action re-engages an absent customer" applies equally to all three),
+   a genuine near-tie where a strict name match would make the test
+   flaky on sampling noise rather than testing ranking correctness.
+
+This is the third bug in this project found by reasoning about the
+system rather than by a failing test going red on its own (after the
+double-settle race and the true-lift correction, both above) — and like
+the true-lift correction, it was caught before the policy this model
+feeds was ever wired to the gateway (still not done — see policy.py's
+own module docstring), so nothing downstream needed to be re-run.
