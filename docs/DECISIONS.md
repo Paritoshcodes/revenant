@@ -2509,3 +2509,307 @@ the singleton-exclusion test rewritten (fallthrough to a different class
 is no longer reachable in this grid, once it's understood that no
 `error_source` is ever shared across two failure classes here — see the
 per-test comments for why). 155 tests pass, mocked, no network.
+
+## 2026-09-01 The randomised holdout experiment + calibration harness, and a real, measured coverage finding
+
+Built `apps/engine/src/revenant_engine/experiment.py` (the runner:
+stratified 50/50 arm assignment on `(grid_cell, amount tertile)`, the
+mandatory runtime coupling guard, both estimates never blended, a
+vectorised 10,000-resample percentile bootstrap) and `calibration.py`
+(both conditions from `docs/EXPERIMENT-PROTOCOL.md`'s "## Calibration
+check") exactly against the FROZEN protocol, read in full first. Nothing
+in the protocol, `config/ground-truth.json`, or any estimator was changed
+to produce a result.
+
+**One design tension surfaced between two parts of that session's task
+instructions** (the mandatory coupling guard vs. the null condition's
+deliberately-different treatment policy) — resolved by reading
+`tests/test_policy.py::test_policy_choice_matches_the_grid_true_lift_couples_the_two`
+(the exact test the task cited as already protecting this) rather than
+guessing: that test calls `propose_action` directly, so the guard is a
+fixed, unconditional check of `propose_action` + whatever `model` an
+experiment run is using, entirely independent of the `policy` callable a
+caller substitutes for the actual per-transaction simulation. Under this
+reading the guard runs identically on every call, coverage and null
+alike, and stays meaningful — it protects `compute_true_lift()`'s own
+assumption about `propose_action`, not about whatever the null
+condition's substitute policy does. Confirmed correct in practice: the
+guard genuinely FIRED during test-writing, for real, when a test used an
+undersized/differently-seeded model (`train_model(n=500, seed=1)`) whose
+`propose_action` chose `retry_on_timing_window` over
+`gateway/payment_authorization`'s designated `retry_with_backoff` — the
+exact failure mode the guard exists to catch, caught by the guard itself
+before any result was trusted, not discovered after the fact.
+
+### The measured result, one real N=2000 experiment (seed 20260901)
+
+    control recovery rate:   0.3588 (361/1006)
+    treatment recovery rate: 0.4064 (404/994)
+    (a) recovery-rate diff:      4.759pp   [0.468, 8.870]  (95% bootstrap CI)
+    (b) recovered-value diff:  2722.43 paise/txn  [-1436.44, 7117.38]  (95% bootstrap CI)
+    z-test (secondary): z=2.190, p=0.0286
+    bootstrap wall time: 0.173s; full experiment wall time (model pre-trained): 0.705s
+
+(a) and (b) are reported side by side, never blended, per this module's
+own docstring: different quantities, different units, (a) alone is what
+calibration checks coverage against.
+
+### The calibration run: 500 replications × 2 conditions, real, once
+
+Runtime projected before launching (single-experiment time × 1000 ≈
+705s ≈ 11.75 min, well under the ~20-minute budget) — no resample or
+replication count was reduced. Actual: coverage condition 370.21s +
+null condition 107.79s = **478.03s (7.97 min) total**, faster than
+projected because the null condition's substituted policy skips the
+real `propose_action`/`predict_proba` path entirely.
+
+    estimand (compute_true_lift().net_true_lift_pp): 5.4673pp
+
+    COVERAGE condition (real treatment policy):
+      observed coverage: 0.9940  (95% Wilson CI: 0.9825-0.9980)
+      sample mean of the 500 point estimates: 5.4653pp  (vs. estimand 5.4673pp)
+      sample std of the 500 point estimates:  1.5864pp
+
+    NULL condition (treatment forced to equal control, same 500 seeds as coverage):
+      interval-contains-zero rate: 0.9920  (95% Wilson CI: 0.9796-0.9969)
+      z-test rejection rate (p<0.05): 0.0080  (95% Wilson CI: 0.0031-0.0204)
+      sample mean of the 500 point estimates: -0.0552pp
+      sample std of the 500 point estimates:  1.6671pp
+
+### Is coverage consistent with nominal? No — stated plainly, per the task's own instruction
+
+Both figures sit ABOVE `docs/EXPERIMENT-PROTOCOL.md`'s own stated
+92-98% acceptable range: coverage 99.40% (Wilson CI floor 98.25%, itself
+above 98%) and the null's contains-zero rate 99.20%. The null's
+rejection rate (0.80%) is correspondingly far BELOW the expected ~5%.
+**This is over-coverage — the bootstrap interval is too WIDE, not too
+narrow** — the conservative direction, not the dangerous one (it would
+understate the model's real precision rather than manufacture false
+positives), but still outside the stated acceptable range and reported
+as such rather than rounded to "close enough."
+
+**Bias was checked first and ruled out.** The sample-mean diagnostic
+(`sample_mean_estimate_pp`, added specifically to separate "the
+simulation is biased" from "the bootstrap miscovers," since the two look
+identical from the coverage fraction alone) shows both conditions
+centred almost exactly on their estimand: 5.4653pp vs. 5.4673pp
+(coverage), -0.0552pp vs. 0.0pp (null). The simulation itself is not the
+problem.
+
+**A genuine, identified, well-founded cause was found by re-reading the
+code — a real property of the specified estimator, not a coding bug —
+and is reported as such, per the task's explicit instruction, without
+changing anything to fix it.** The bootstrap, as both the protocol and
+the task's own precise instructions specify ("resample each arm
+independently... do not resample the pooled sample and re-split"),
+resamples each arm's POOLED transactions uniformly, with no awareness of
+the `(grid_cell, amount_band)` STRATIFICATION the arms were actually
+assigned under. Stratified assignment guarantees exact per-stratum
+balance every single real experiment — a real, structural variance
+reduction, since the seven grid cells have very different recovery
+rates (e.g. `gateway/authentication` realises 0.45 control vs. 0.78
+treatment) and stratification removes the between-cell compositional
+noise a simple random assignment would carry. A percentile bootstrap
+that resamples the pooled arm with replacement does NOT preserve that
+exact balance in any given resample (a resample can and does
+over/under-represent particular cells relative to the true stratified
+proportions), which reintroduces exactly the compositional variance the
+real design eliminated — inflating the bootstrap's implied uncertainty
+above the estimator's true (stratification-reduced) sampling variance.
+
+**Directly measured, not just argued**: five independent real experiments
+(seeds 1-5) each report a bootstrap-implied standard error (half-width /
+1.96) of ~2.19-2.25pp — consistently about 40% larger than the
+1.5864pp standard error the 500 real replications actually exhibit
+between themselves. That 500-replication figure IS the true sampling
+distribution's standard error, empirically measured, not inferred; the
+bootstrap systematically overstates it by roughly the same margin every
+time, which is exactly the signature over-coverage requires.
+
+**Nothing was changed to fix this.** Per the task's explicit rule, a
+stratified bootstrap (resampling within each stratum separately, then
+combining) would very likely close this gap, and is recorded here as the
+identified, named fix for future work — but implementing it now would be
+adjusting the estimator's method specifically because the number looked
+wrong, which the task explicitly forbids ("do not change... any
+estimator to improve a result"; "Adjusting the bootstrap method... to
+move coverage toward 95% would invalidate the entire exercise"). The
+92.5-98% target itself, and the exact bootstrap procedure specified,
+both come from the FROZEN protocol; this entry records a real,
+measured, explained departure from it, not a silent correction.
+
+### What changed in code
+
+`experiment.py`: `run_experiment`, `TransactionRow` (including
+`effective_recovery_probability`, exposed specifically for the
+customer-prior tests and the dashboard's zero-abstraction requirement),
+`simulate_transaction`, `_coupling_guard`, `_assign_arms`, `_amount_bands`,
+`_bootstrap_and_ztest`, `ExperimentEstimates`/`BootstrapInterval`/
+`ZTestResult`. `calibration.py`: `run_calibration`, `_derive_seeds`,
+`_null_policy`, `CalibrationCondition`/`CalibrationResult`. `main.py`:
+`POST /experiment`, `POST /calibration` (routing only, `replications`
+defaults to 20 for interactive use, 500 is requested explicitly). 24 new
+tests across `tests/test_experiment.py` and `tests/test_calibration.py`
+(179 total, all mocked/synthetic, no network) — including the coupling
+guard firing for real during development (above), the bootstrap covering
+a known analytical value on a constructed case, and the two
+`customer_prior`-fixed-across-attempts cases built directly against real
+ground-truth rows rather than a spy or a distributional check.
+
+## 2026-09-01 Closing the over-coverage gap: a stratified bootstrap, confirmed as a diagnosed fix, not tuning
+
+**The distinction that matters, stated up front because it is the whole
+reason this entry is allowed to exist.** The entry above measured
+99.40% coverage against a 95% nominal target and diagnosed a specific,
+named cause (the bootstrap pools each arm uniformly, discarding the
+variance reduction the `(grid_cell, amount_band)` stratified assignment
+actually achieves) — quantitatively, not just plausibly: five real
+experiments' bootstrap-implied SE was ~1.38-1.42x the empirical
+between-replication SE, and inverting the observed 99.40% coverage
+independently implied the same ~1.40x ratio. Two different calculations
+converging on the same number is what makes this a DIAGNOSED BUG, not a
+number that merely "looked wrong." Correcting a diagnosed bug in how an
+estimator is computed is a different act from adjusting an estimator
+because its output was unwelcome — the second would invalidate the
+calibration exercise; the first is what the exercise exists to enable.
+Nothing about `docs/EXPERIMENT-PROTOCOL.md`, `config/ground-truth.json`,
+the population, or the arm assignment changed. Only how the CI is
+computed from already-simulated data changed.
+
+### The fix
+
+`experiment.py` gained `_bootstrap_stratified` alongside the original
+`_bootstrap_pooled` (kept, unmodified, selectable via a new
+`bootstrap_method: Literal["pooled", "stratified"]` parameter threaded
+through `run_experiment`, `calibration.run_calibration`, and both API
+endpoints — default stays `"pooled"`, so nothing changes for an existing
+caller who doesn't ask for the correction). The stratified version
+resamples WITHIN each `(grid_cell, amount_band)` stratum independently,
+preserving that stratum's own original size in each arm — exactly
+reproducing, in every resample, the per-stratum balance the real random
+assignment guarantees every actual experiment — then aggregates across
+strata using their true fixed sizes. Vectorised the same way as the
+pooled version WITHIN each stratum (one `(10_000, stratum_size)` index
+draw per (stratum, arm) group); the only Python-level loop is over the
+strata themselves (<=21 today), negligible next to the vectorised
+10,000-wide draws inside it.
+
+A constructed test
+(`test_stratified_bootstrap_has_less_variance_than_pooled_when_strata_are_internally_homogeneous`)
+makes the mechanism exactly, not just approximately, verifiable: two
+strata each internally homogeneous (every row in a group identical) but
+differing from each other, so ALL the apparent variance is compositional.
+Stratified bootstrap on this case has EXACTLY zero variance (every
+resample reproduces the same homogeneous values, by construction);
+pooled has real, substantial variance (pooling destroys the within-
+stratum homogeneity a stratified resample preserves) — the live
+500-replication finding, reproduced as a sharp, exact case rather than
+only an empirical one.
+
+### Re-run, same master seed (20260901), pooled and stratified, side by side
+
+|  | pooled | stratified |
+|---|---|---|
+| **Coverage condition** | | |
+| observed coverage | 0.9940 | **0.9380** |
+| Wilson 95% CI | [0.9825, 0.9980] | [0.9133, 0.9560] |
+| sample mean of 500 estimates | 5.4653pp | 5.4653pp *(identical — same underlying data)* |
+| sample SD of 500 estimates (empirical ground truth) | 1.5864pp | 1.5864pp *(identical)* |
+| mean bootstrap-implied SE | 2.1905pp | **1.4827pp** |
+| **Null condition** | | |
+| contains-zero rate | 0.9920 | **0.9400** |
+| Wilson 95% CI | [0.9796, 0.9969] | [0.9156, 0.9577] |
+| z-test rejection rate | 0.0080 | 0.0080 *(unchanged — see below)* |
+| Wilson 95% CI | [0.0031, 0.0204] | [0.0031, 0.0204] |
+| sample mean of 500 estimates | -0.0552pp | -0.0552pp *(identical)* |
+| sample SD of 500 estimates | 1.6671pp | 1.6671pp *(identical)* |
+| mean bootstrap-implied SE | 2.1672pp | 1.6363pp |
+| wall time (500×2 experiments) | 475.37s | 448.10s |
+
+**The stratified bootstrap's implied SE (1.4827pp, coverage condition)
+lands close to the empirical ground truth (1.5864pp) — the ratio the
+diagnosis predicted collapsed from ~1.40x to ~0.93x**, i.e. essentially
+corrected, slightly on the conservative-under-covering side rather than
+over-covering. **Coverage moved from 99.40% (clearly outside the
+protocol's 92-98% range) to 93.80% (Wilson CI [91.33%, 95.60%], squarely
+inside it and straddling 95%).** The null condition's contains-zero rate
+moved identically, 99.20% -> 94.00% (Wilson CI [91.56%, 95.77%]) — same
+verdict.
+
+**This lands near nominal, so per the task's own instruction: both
+results stay on record, and this is framed as the calibration harness
+detecting a real flaw in this project's own estimator — exactly what it
+was built to do, and exactly the kind of finding a competitor without a
+known ground truth could never have produced.** No third variant was
+tried; nothing was tuned further once stratified landed inside the
+stated range.
+
+### A real, SEPARATE, NOT-fixed finding: the z-test's rejection rate stayed at 0.80%
+
+Fixing the bootstrap did not move the null condition's z-test rejection
+rate at all — 0.0080 under both methods, to four decimal places,
+identical replication-for-replication. This is not a coincidence: the
+two-proportion z-test is computed directly from the real per-arm counts
+(`x1, x2, p1, p2, p_pool`, `experiment.py`'s `_bootstrap_and_ztest`) and
+never touches either bootstrap's resampled output at all — mathematically
+guaranteed to be identical regardless of `bootstrap_method`, and now
+empirically confirmed. The z-test's own standard error formula
+(`sqrt(p_pool*(1-p_pool)*(1/n1+1/n2))`) has the SAME structural blind
+spot the pooled bootstrap had: it treats both arms as simple i.i.d.
+Bernoulli samples, with no awareness of the stratified design, which
+plausibly overstates its SE the same way the pooled bootstrap's did and
+would explain the persistent under-rejection (0.80% observed vs. ~5%
+nominal). **This was NOT fixed this session — the task's fix request was
+scoped to the bootstrap specifically, and extending it to the z-test's
+own SE formula was not asked for and was not done.** Recorded here as an
+open, separate, secondary-check-only finding (the z-test is explicitly
+labelled secondary throughout this module, never the primary claim) for
+a future session, not silently left undiscovered.
+
+### The coincidence check: same 4 replications under pooled, a real dependency revealed by fixing one side of it
+
+Pooled bootstrap: the null condition's 4 non-containing replications
+(indices 29, 53, 258, 305 of 500) and the 4 z-test-rejecting replications
+are the EXACT SAME SET — not just the same count. Stratified bootstrap:
+the non-containing set grows to 30 replications (consistent with a ~94%
+containment rate), while the rejecting set is UNCHANGED (still exactly
+{29, 53, 258, 305}, since the z-test never reads bootstrap output) — and
+those same 4 indices are a SUBSET of the new 30.
+
+**The answer, precisely, not simplified to either "coincidence" or
+"dependency" alone**: the two checks are NOT the same computation —
+proven directly by fixing only one of them and watching the agreement
+break (4-of-4 exact match under pooled, 4-of-30 subset under stratified).
+But the exact 1:1 match under pooled was also not pure chance at N=500:
+it happened because the pooled bootstrap's implied SE (2.1672pp, null
+condition) and the z-test's own naive SE were numerically CLOSE, both
+inflated by the same root cause (both ignore the stratified design), so
+both procedures flagged nearly the identical set of "extreme enough"
+replications under that shared bias. Once the bootstrap's SE was
+corrected and shrank toward the true 1.5864pp-ish scale, it started
+disagreeing with the z-test's still-uncorrected, still-inflated SE, and
+the agreement broke immediately and substantially. The four
+rejecting replications remaining a SUBSET of the stratified non-
+containing set is exactly what should happen: a genuinely extreme
+replication (extreme enough to reject at 5% even under an
+inflated-SE test) should also fail to be contained by ANY reasonably
+-calibrated interval, tight or wide.
+
+### What changed in code
+
+`experiment.py`: `_bootstrap_and_ztest`'s inline resampling logic
+extracted, unchanged in substance, into `_bootstrap_pooled`;
+`_bootstrap_stratified` added alongside it (new); `BootstrapMethod`;
+`bootstrap_method` parameter on `_bootstrap_and_ztest`/`run_experiment`,
+`ExperimentEstimates.bootstrap_method`. `calibration.py`:
+`bootstrap_method` threaded through `run_calibration`/`_run_condition`,
+`CalibrationCondition` gained `mean_bootstrap_implied_se_pp`,
+`bootstrap_method`, `per_replication_contains`,
+`per_replication_z_rejected` (the last two specifically to make the
+coincidence question answerable from the result object itself, not just
+from a one-off script). `main.py`: `bootstrap_method` on both request
+models, default `"pooled"`. 4 new tests in `tests/test_experiment.py`
+(known-value coverage for the stratified path, the exact-zero-variance
+mechanism demonstration, an invalid-method `ValueError`, and
+`bootstrap_method` recorded correctly end to end). 183 tests pass,
+mocked/synthetic, no network.

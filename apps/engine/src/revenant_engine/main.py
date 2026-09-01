@@ -15,8 +15,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from revenant_contracts import observed_reasons, policy_grid
 
+from .calibration import CalibrationResult, run_calibration
 from .classifier import ExactClassifier, LlmClassifier, LlmClassifierConfigurationError
 from .confidence_gate import GatedClassification, apply_confidence_gate
+from .experiment import BootstrapMethod, ExperimentResult, run_experiment
 from .policy import Diagnosis, ProposedAction, propose_action
 from .population import Population, generate_population
 
@@ -56,6 +58,47 @@ def propose(diagnosis: Diagnosis) -> ProposedAction:
     Routing only -- see policy.py for the decision logic. NOT wired to the
     gateway in this session; that is separate, later integration work."""
     return propose_action(diagnosis)
+
+
+class ExperimentRequest(BaseModel):
+    n: int = 2000
+    # Optional, matching /population's own pattern: generated and
+    # returned on the result if omitted, never silently reproducible by
+    # accident.
+    seed: int | None = None
+    # "pooled" default matches experiment.py's own default (the original
+    # method, kept available rather than replaced) -- see
+    # docs/DECISIONS.md for the measured pooled-vs-stratified comparison
+    # this parameter exists to let a caller reproduce.
+    bootstrap_method: BootstrapMethod = "pooled"
+
+
+@app.post("/experiment")
+def experiment(request: ExperimentRequest) -> ExperimentResult:
+    """One randomised holdout experiment per docs/EXPERIMENT-PROTOCOL.md.
+    Routing only -- see experiment.py for the runner, the mandatory
+    coupling guard, and both estimates (never blended)."""
+    seed = request.seed if request.seed is not None else secrets.randbits(63)
+    return run_experiment(request.n, seed=seed, bootstrap_method=request.bootstrap_method)
+
+
+class CalibrationRequest(BaseModel):
+    # 20, not the protocol's own 500: an interactive-use default so a
+    # request from the dashboard returns promptly. The real 500-replication
+    # figure is requested explicitly, not baked in as this endpoint's
+    # default -- see docs/DECISIONS.md for that run's actual numbers.
+    replications: int = 20
+    master_seed: int | None = None
+    bootstrap_method: BootstrapMethod = "pooled"
+
+
+@app.post("/calibration")
+def calibration(request: CalibrationRequest) -> CalibrationResult:
+    """The calibration harness per docs/EXPERIMENT-PROTOCOL.md's
+    "## Calibration check". Routing only -- see calibration.py; nothing
+    here is tuned toward a target coverage figure."""
+    master_seed = request.master_seed if request.master_seed is not None else secrets.randbits(63)
+    return run_calibration(request.replications, master_seed=master_seed, bootstrap_method=request.bootstrap_method)
 
 
 class ClassifyRequest(BaseModel):
