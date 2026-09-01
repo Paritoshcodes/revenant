@@ -2813,3 +2813,356 @@ models, default `"pooled"`. 4 new tests in `tests/test_experiment.py`
 mechanism demonstration, an invalid-method `ValueError`, and
 `bootstrap_method` recorded correctly end to end). 183 tests pass,
 mocked/synthetic, no network.
+
+## 2026-09-01 Scale and robustness pass, before the dashboard
+
+Five workstreams, run in this order: flip the shipped bootstrap default
+to stratified, re-run the gateway live (highest priority — a demo-
+breaking bug here beats everything else), scale the engine to N=100,000
+and calibration to 2,000 replications, fuzz `run_experiment` and
+`resolve_grid_cell`, and record the demo's failure-mode decisions in
+docs/PLAN.md. Machine: 15.2 GiB RAM, ~6.5 GiB free at the time, 12 CPUs.
+
+### Default flipped: `bootstrap_method="stratified"` everywhere
+
+`experiment.py`'s `run_experiment`, `calibration.py`'s `run_calibration`,
+and `main.py`'s `ExperimentRequest`/`CalibrationRequest` all defaulted to
+`"pooled"`; all three now default to `"stratified"` — the corrected
+estimator per the 2026-09-01 over-coverage fix above. `"pooled"` stays
+fully selectable, not removed. Grepped the whole engine tree for
+`bootstrap_method` afterward to confirm no other default-carrying call
+site existed (the dashboard doesn't exist yet). Full suite green
+immediately after (183 tests, before this session's own new tests were
+added) — no existing test had assumed the old default, so nothing needed
+relaxing for this change specifically.
+
+### Gateway live re-run (Part 2, run first): green, plus one real,
+### non-code finding
+
+`npm run test` (297/297), `npm run test:db` (22/22, `DATABASE_URL`
+reachable), `npm run smoke` (real fail-then-retry: `pay_TWg9lv1BWBt06d`
+failed, `pay_TWgA2mJQ3HlUvJ` captured on retry), and `npm run smoke:batch`
+(5/5 links created and verified, ~8.1s/link) all passed cleanly against
+real Razorpay test mode — nothing here has regressed since 26 August
+despite the guardrail rework, the settle/close discriminated-result
+types (Build log entry 10), and the test-layout changes all landing
+since then.
+
+**`npm run batch -- --count 30 --concurrency 4`, live, seed 1538946708:**
+30 links, 46 attempts, 24 captures, 5 failures, 6 guardrail vetoes,
+recovered 499,000 paise control / 698,600 paise treatment, elapsed
+1129.3s (~18.8 min). Every veto's `executorCalls` confirmed no outbound
+Razorpay call was made for the vetoed decision. Compared directly against
+the only 26 August run with a clean, uncorrupted veto-type breakdown —
+**not** the `--count 20` run (that run's own report describes the
+circuit-breaker-measuring-itself bug that halted 8/20 transactions before
+the fix, so it has no clean final veto table to compare against; using it
+anyway would have compared today's numbers against a run known to be
+distorted by the very bug it discovered) — the `--count 10` run right
+after that fix: `10 links, 12 attempts, 6 captures, 2 failures, 4 vetoes
+(1 terminal_grid_cell forced, 1 minimum_backoff, 2 circuit_breaker)`.
+
+Today's breakdown: 1 `terminal_grid_cell` (forced diagnostic override,
+txn_0, as every batch run intentionally exercises), 4 `max_attempts`
+(txn_5, 7, 17, 28), 1 `minimum_backoff` (txn_26), 0 `circuit_breaker`.
+Two differences named explicitly, per instruction, in both directions:
+
+- **`circuit_breaker`: 2 vetoes on 26 Aug, 0 today.** Consistent with the
+  same-day `ExecutionHealth` fix (this file, "count=20 run" entry)
+  working correctly in production: today's 5 real declines were
+  genuine bank outcomes, not execution faults, and correctly were not
+  counted toward the breaker's threshold. Not a regression signal.
+- **`max_attempts`: 0 vetoes on 26 Aug (10-count run), 4 today.**
+  `max_attempts` is original guardrail logic (ARCHITECTURE.md's first
+  guardrail rule); its absence at N=10 is a small-sample effect — a
+  transaction needs 3 genuine consecutive failures to trip it, unlikely
+  to occur organically at N=10. Its appearance at N=30 is consistent with
+  more transactions giving more chances, not evidence of a code change,
+  though a single uncontrolled comparison (different N, different
+  recovery-rate parameters) cannot fully rule out a behaviour change on
+  its own — a matched re-run (same `--count`, same `--seed`) would close
+  that gap if a tighter check is ever wanted.
+
+**`RUN_LIVE_TESTS=1 npm run test:live`: 4/5 pass, 1 real failure — root-
+caused to a stale Razorpay dashboard webhook registration, not a code
+bug.** `checkout-outcome.live.test.ts` (the driver-vs-API contract test,
+the one that checks the driver's own logic against Razorpay's own
+recorded status) passed all 3 cases: failure path, success path, and a
+same-session fail-then-retry, each with the driver's reported outcome
+matching the API's own status exactly. `webhook-delivery.live.test.ts`
+split 1/2: the unsigned-forged-webhook rejection test passed (the
+endpoint correctly 401s an unsigned POST sent directly at the tunnel),
+but `a real failed payment produces a real, signature-verified
+webhook_events row...` failed — `pollForWebhookEvent` never found a
+matching row within its 45s window.
+
+Investigated rather than accepted at face value, since this is exactly
+the class of failure the task named as demo-breaking. Three facts,
+checked directly, rule out a code regression:
+
+1. `zrok2.exe` was confirmed still running after the test (PID 27400) —
+   the test's own tunnel-startup path (mirroring `webhooks-up.mts`)
+   worked and reused the reserved share name successfully.
+2. The unsigned-probe sub-test passing is direct proof the tunnel is
+   live and correctly routing a real HTTP request through to the
+   gateway's webhook handler — the mechanism this test exists to prove
+   (docs/API-BEHAVIOUR.md section 8) is intact.
+3. `SELECT * FROM webhook_events ORDER BY received_at DESC LIMIT 10`
+   showed the newest row is still `id=55`, `received_at:
+   2026-08-26T12:29:33.011Z` — **nothing has been delivered to this
+   environment since 26 August**, spanning every live run since,
+   including today's driven payment.
+
+Since Razorpay has no webhook-registration API (docs/API-BEHAVIOUR.md
+section 12: dashboard-only, manual, needs the fixed test-mode OTP), the
+most likely explanation is that whatever URL is currently registered in
+the dashboard no longer matches a live tunnel — the tunnel software
+coming up correctly is necessary but not sufficient. This cannot be
+fixed from this session (no dashboard access, and re-registering a
+webhook is exactly the kind of account/security-settings change that
+needs a human at the keyboard with the OTP) — recorded here, and in
+docs/PLAN.md's new failure-mode section, as a real, open action item
+before the demo, not silently worked around or left undocumented.
+
+### Engine scale sweep, N = 200 / 2,000 / 20,000 / 100,000 (Part 1)
+
+One-off `_scratch_scale.py`, deleted after use. `psutil` was not
+installed in the engine's own `.venv` (only in the separate global
+Python on PATH, confirmed by `ModuleNotFoundError` on the first attempt)
+— installed into `.venv` via `pip install psutil` before re-running;
+`pyproject.toml` was not touched, since this is a one-off measurement
+tool's dependency, not a project dependency.
+
+    n         total     sim       bootstrap   rss_delta    gap_to_estimand   rate_halfwidth
+    200       0.072s    0.056s    0.017s      0.3 MiB      +1.429pp          8.888
+    2,000     0.672s    0.513s    0.159s      0.1 MiB      +1.582pp          2.896
+    20,000    7.380s    5.533s    1.847s      44.7 MiB     -0.805pp          0.940
+    100,000   37.185s   28.031s   9.154s      193.4 MiB    +0.028pp          0.416
+
+(stratified bootstrap, the shipped default; each N its own seed, so gaps
+are single independent draws, not a converging sequence — see below).
+
+**No non-linear degradation found at any N tested.** The per-transaction
+Python loop in `run_experiment` (`experiment.py`, calling
+`propose_action` — a real `model.predict_proba` inference — once per
+TREATMENT-arm transaction) is the dominant cost at every N, consistently
+~75% of total wall time, exactly matching the prediction made before
+running anything (`population.generate_population` itself is fully
+vectorised numpy, confirmed by reading it, so this Python loop was the
+one candidate for a non-linear blowup and it stayed linear: 200→2,000 is
+~9.3x time for 10x N, 2,000→20,000 is ~11x for 10x N, 20,000→100,000 is
+~5x for 5x N — no super-linear trend across three doublings of scale).
+100,000 transactions run end-to-end, real bootstrap included, in 37
+seconds. RSS delta stayed under 200 MiB even at N=100,000 for the
+stratified path (`_bootstrap_stratified`'s per-stratum loop, never
+holding a full-population-sized array).
+
+**Convergence toward the estimand, stated precisely, not oversold.** The
+point-estimate gap to `compute_true_lift().net_true_lift_pp` (5.4673pp)
+does NOT shrink monotonically across this table (n=2,000's +1.582pp gap
+is larger than n=200's +1.429pp) — expected, since each N used a
+different seed and is one independent draw from the sampling
+distribution, not four points on one converging path. The honest claim
+is coverage, not monotone convergence: the true estimand fell inside
+every single one of the four 95% intervals reported here, at every N,
+including the widest one (n=200: `[-1.962, 15.814]`). At n=100,000 the
+gap is +0.028pp — visibly, not just theoretically, close.
+
+**Half-width narrows as 1/√N, confirmed as a computed ratio, not an
+eyeball.** Against the n=200 half-width as baseline:
+
+    n         observed_ratio   expected_sqrt_ratio   diff
+    200       1.0000           1.0000                +0.0000
+    2,000     0.3258           0.3162                +0.0096
+    20,000    0.1058           0.1000                +0.0058
+    100,000   0.0468           0.0447                +0.0021
+
+Expressed as observed/expected (the ratio that actually says how far off
+each point is, not the raw absolute difference against a baseline of
+1.0000): 1.000, 1.030, 1.058, 1.047 — up to 5.8% off, at n=20,000, not
+under 1%. Still a close tracking of the 1/√N shape at every N, but stated
+at its real magnitude rather than understated by reading the absolute
+`diff` column against the wrong reference point.
+
+**Pooled bootstrap ran at 200/2,000/20,000 for real, and was
+consistently both wider and slower than stratified at every N tested** —
+at n=20,000: half-width 1.355 (pooled) vs. 0.940 (stratified), bootstrap
+wall time 2.267s vs. 1.847s. Consistent with the over-coverage diagnosis
+already on record; not a new finding, a confirmation at scale.
+
+**Pooled bootstrap at N=100,000 was deliberately NOT run — a memory-
+safety pre-check inside the script itself skipped it before any
+allocation was attempted, not a guess.** Formula (matching the plan's
+own hand-derivation before this script was written): `3 *
+N_BOOTSTRAP_RESAMPLES * (n/2) * 8` bytes — two held `(10_000, n/2)`
+index arrays plus one transient gathered array of the same shape, at any
+given moment. At n=100,000: `3 * 10_000 * 50_000 * 8` = 12,000,000,000
+bytes = **11.18 GiB projected peak**, against **6.25 GiB available** at
+check time (70% of which is 4.37 GiB — nowhere close). The projected
+figure matches the plan's own hand-computed estimate before any code
+ran, to two decimal places. This is exactly the finding Part 5's default
+flip anticipated and is now concretely evidenced, not merely argued: on
+this machine, `bootstrap_method="pooled"` is not just statistically
+wrong for this design at N=100,000, it is very likely to crash the
+process or thrash the whole machine.
+
+**Calibration at 2,000 replications, stratified, master_seed
+20260901_2000 (distinct from the 500-rep run's seed, so this is a fresh,
+independent sample, not a re-read of the same draws):**
+
+    total wall time: 2022.12s (33.70 min)
+
+    coverage condition:
+      estimand:                    5.4673pp
+      coverage_rate:                0.9380  (95% Wilson CI [0.9266, 0.9478])
+      sample_mean_estimate_pp:      5.4156
+      sample_std_estimate_pp:       1.5215
+      mean_bootstrap_implied_se_pp: 1.4803
+      wall_time_s:                  1543.47
+
+    null condition (same seeds as coverage, per calibration.py's own design):
+      contains_zero_rate:           0.9520  (95% Wilson CI [0.9417, 0.9605])
+      rejection_rate:                0.0110  (95% Wilson CI [0.0073, 0.0166])
+      sample_mean_estimate_pp:      -0.0126
+      sample_std_estimate_pp:        1.6645
+      mean_bootstrap_implied_se_pp:  1.6336
+      wall_time_s:                   478.63
+
+**The point estimate held; the interval did not, and that is the
+finding, not a footnote.** Coverage at 2,000 replications (93.80%) matches
+the 500-replication run's point estimate (also 93.80%) to two decimal
+places, but the two runs' Wilson intervals tell a different story: at 500
+replications, `[0.9133, 0.9560]` CONTAINS the nominal 0.95 target — the
+estimator was consistent with correct coverage. At 2,000 replications,
+`[0.9266, 0.9478]` EXCLUDES 0.95 — narrower, and now sitting entirely
+below nominal. More replications did not move the point estimate; they
+resolved whether a small departure from nominal was real, and it is: the
+stratified bootstrap is very slightly anti-conservative here, not merely
+"close enough to call exact." Still comfortably inside
+EXPERIMENT-PROTOCOL.md's stated 92-98% acceptable range — this is a
+real, small, now-resolved departure from 95% nominal, not a broken
+estimator — but it is a genuine finding, not a repeat of the 500-rep
+number with a tighter error bar attached for decoration.
+
+**The full chain, computed, not asserted:** the stratified bootstrap's
+mean implied SE at 500 replications was 1.4827pp (this file, prior
+entry), against 1.5864pp for the empirical between-replication SD at that
+same N — the real sampling spread, measured directly from the 500 point
+estimates themselves, independent of which bootstrap method is later used
+to build a CI from any one of them. Ratio: 1.4827 / 1.5864 = 0.935 — the
+bootstrap's own implied SE understates the true sampling SE by about
+6.5%. For a two-sided 95% interval built as point ± 1.96×SE, an SE that
+is a fraction r of the true SE implies coverage of 2Φ(1.96r) − 1: at
+r=0.935, that is 2Φ(1.8326) − 1 ≈ 0.933 — predicted BEFORE looking at the
+2,000-replication result, from 500-replication numbers already on record.
+**The 2,000-replication run observed 0.938** — close enough to the 0.933
+prediction that the mechanism is confirmed, not merely consistent with
+being under-nominal by chance. Pooled, for contrast, erred by roughly the
+same magnitude in the opposite direction: its own 500-rep implied SE was
+2.1905pp, a ratio of 2.1905 / 1.5864 = 1.38 against the same empirical
+SD — about 38% too WIDE, the over-coverage this whole fix was built to
+close. The stratified fix did not overshoot into a new, opposite bias by
+accident; it landed close to nominal with a small, now-measurable,
+same-order-of-magnitude residual on the conservative-to-anti-conservative
+axis, in the direction theory predicts for a design that still doesn't
+perfectly capture every source of stratified-sampling variance.
+
+**No third bootstrap variant was attempted, and that is deliberate, not
+an oversight.** The temptation after seeing 93.80% sit outside a 95%
+Wilson interval is to try adjusting something — a finite-population
+correction, a different resampling unit, a bias correction on the
+percentile method — until the number looks better. That is exactly the
+move this project has refused, repeatedly and explicitly, throughout: not
+tuning an estimator to chase a target after seeing its output. The
+stratified bootstrap was built once, from a diagnosed, quantitatively
+confirmed cause (this file, "closing the over-coverage gap"), and this
+2,000-replication run is that fix being checked with more data, not
+re-opened for a second correction because the checked number wasn't
+exactly 95.00%. The residual 6.5% SE understatement is recorded here as
+what it is — a small, real, now-resolved property of this estimator on
+this design — and left alone.
+
+Both conditions' Wilson intervals remain squarely inside
+EXPERIMENT-PROTOCOL.md's stated 92-98% acceptable range. The null
+condition's contains-zero rate (95.20%) sits almost exactly on the 95%
+nominal target — closer than the 500-rep run's own 94.00%. The z-test's
+rejection rate (1.10%) remains well below the nominal 5%, consistent
+with the already-recorded, still-unfixed, separately-scoped finding that
+the z-test's own SE formula ignores stratification the same way the old
+pooled bootstrap did (this file, prior entry) — not touched this
+session, out of scope for this task.
+
+**Interval tightening, checked as a computed ratio:** the 500-rep run's
+Wilson CI width was 0.0427 (`[0.9133, 0.9560]`); this 2,000-rep run's is
+0.0212 (`[0.9266, 0.9478]`) — a ratio of **0.4961**, against an expected
+`sqrt(500/2000) = 0.5000` if width scales as `1/sqrt(replications)`. A
+0.4961 vs. 0.5000 match is about as clean as this kind of check gets in
+practice.
+
+### Fuzz/property tests: `run_experiment` and `resolve_grid_cell` (Part 3)
+
+New `tests/test_scale_and_edge_cases.py`, 28 tests, all passing on the
+first run — a genuine "nothing was broken" result, stated as such rather
+than manufactured into a finding, unlike several earlier sessions in
+this project where the equivalent sweep found real bugs (the NaN-clips-
+to-1.0 and unsorted-candidates bugs in the classifier edge-case sweep,
+this file, 2026-09-01 entry). `hypothesis` was checked and confirmed not
+already a project dependency; every case is hand-written rather than
+adding a new test-only dependency for one file.
+
+**Decided, not discovered: `MIN_TRANSACTIONS = 4`, checked as the first
+line of `run_experiment`, raising `ValueError` before
+`generate_population` is ever called.** Both estimates need >= 2
+transactions per arm to mean anything (a one-point "arm" has a mean but
+its bootstrap resample is a degenerate constant, not an estimate of
+variability); 2 per arm x 2 arms is the arithmetic floor. A second,
+belt-and-braces `RuntimeError` fires immediately after real arm
+assignment if `n_control < 2` or `n_treatment < 2` despite `n >= 4` —
+necessary because `_assign_arms` balances PER STRATUM (up to ~21
+`(grid_cell, band)` groups), not globally, so the analytic floor alone
+does not guarantee the practical one.
+
+**A real, measured finding from writing these tests, not assumed in
+advance: the analytic floor is almost never practically reachable.**
+Swept live before writing the test, 10 seeds per N: the runtime guard
+fires 10/10 seeds at n=4, 5, and 7; 5/10 at n=10; 0/10 at n>=20. Pinned
+directly in `test_small_n_above_floor_reliably_trips_the_runtime_guard`
+and `test_n_twenty_and_above_reliably_succeeds` — both guards are doing
+real, load-bearing work, not one dead branch protecting a case the other
+already prevents.
+
+Other cases, all confirmed correct on the first run, no fix needed: a
+single-grid-cell population (via `generate_population`'s own
+`grid_rows` injection seam) degrades cleanly to per-band-only
+stratification; identical amounts collapse the tertile cut points to a
+single value and `_amount_bands` correctly produces only "low"/"high"
+bands with "mid" unreachable, rather than raising or emitting an empty
+band silently; `seed=0` and `seed=2**62-1` behave identically to any
+other seed, including determinism across two calls; `resolve_grid_cell`
+fed an unknown `failure_class`, an unrecognised `error_source`/
+`error_step`, both `None`, or malformed strings (empty, wrong case,
+whitespace, non-ASCII) returns `None` in every case — fails closed, never
+raises, matching the same discipline already verified against real
+adversarial probes (this file, "closing the canonical-fallback targeting
+path"). Odd `n` (21, 23, 41) and every case above that produces a real
+`ExperimentResult` was independently checked for per-stratum
+`|n_control - n_treatment| <= 1` from outside `_assign_arms`, not merely
+trusting its own internal assertion.
+
+**No existing test needed relaxing anywhere in this session's work** —
+Part 5's default flip, Part 1's scale sweep, and Part 3's fuzz sweep all
+passed against the existing suite unmodified; the only test-suite change
+this session is the 28 new, purely additive tests. 211 tests pass total
+(up from 183), mocked/synthetic where applicable, `pytest -q` run fresh
+at the end to confirm.
+
+### docs/PLAN.md: demo failure modes (Part 4)
+
+New "Demo failure modes, decided in advance" section: Groq-unavailable
+(demo the exact-match path, show the 503 fallback deliberately on an
+off-grid example), zrok/webhook-registration risk (rewritten mid-session
+once the live `test:live` finding above was in hand, to name the actual
+observed cause rather than a generic "tunnel down"), Razorpay-slow (a
+small 5-10 transaction live segment; N=30+ and N=100,000 figures are
+shown pre-recorded), and calibration runtime (always precomputed, never
+re-run live, stated as a hard rule).

@@ -105,3 +105,58 @@ and are never summed. The experiment protocol stays frozen; if a parameter
 must change, it is logged with a reason and the run starts over. Run the
 smoke script after every browser change, because six bugs so far were found
 by browsers and none by tests.
+
+## Demo failure modes, decided in advance (2026-09-01)
+
+The demo depends on three third-party services (Groq, the zrok tunnel,
+Razorpay test mode) plus one long-running computation (calibration). Each
+gets a decided fallback here, before demo day, not discovered on it.
+
+**Groq unavailable** (rate-limited, key revoked, or the service is down).
+`POST /classify` already degrades to `ExactClassifier`-only and returns a
+503 with a clear message on a genuine miss (`apps/engine/src/revenant_engine/main.py`).
+Decision: demo the exact-match path live, and show the 503/fallback on a
+deliberately off-grid example as part of the script -- framed as the
+system correctly refusing rather than fabricating a diagnosis. Never rely
+on a live Groq call as the centerpiece with no rehearsed fallback if it
+fails.
+
+**zrok tunnel down, OR Razorpay's dashboard registration has gone stale.**
+Webhook delivery has no polling fallback in this codebase
+(docs/API-BEHAVIOUR.md: "No polling fallback needed" was written when the
+tunnel was up and stayed up). Confirmed live 2026-09-01
+(docs/DECISIONS.md): the zrok tunnel itself came up correctly and routed
+a real request to the gateway (an unsigned-probe sub-test passed), and
+the driver-vs-API contract held on all 3 cases -- but the real
+Razorpay-originated `payment.failed` webhook for that same run never
+arrived; the newest row in `webhook_events` is still from 26 August. Since
+Razorpay has no webhook-registration API (docs/API-BEHAVIOUR.md section
+12: dashboard-only, manual, needs the OTP), the tunnel software working
+is not sufficient -- the dashboard's registered URL has to actually match
+today's live tunnel, and nothing here confirms it still does. Decision:
+the demo does not depend on live webhook delivery at all, regardless of
+cause. Show the recorded webhook evidence already in
+docs/API-BEHAVIOUR.md and docs/DECISIONS.md instead, and treat
+`RUN_LIVE_TESTS=1` webhook coverage as a pre-verified, rehearsed result,
+never a live segment. Before the demo, if live webhook delivery is wanted
+as a rehearsed (not live) segment, re-register the webhook URL in the
+Razorpay dashboard by hand (Settings -> Webhooks, OTP 754081) against the
+tunnel that will actually be running that day, and re-verify with
+`RUN_LIVE_TESTS=1 npm run test:live` before relying on it.
+
+**Razorpay test mode slow.** The batch runner throttles per
+docs/API-BEHAVIOUR.md's measured limits, so a real batch takes real
+minutes (a 30-transaction, concurrency-4 run measured 2026-09-01 -- see
+docs/DECISIONS.md -- took several minutes end to end). Decision: the live
+demo segment uses a small, pre-sized batch (5-10 transactions), chosen
+for a bounded, rehearsed run time. The large N=30+ batch and the engine's
+100,000-transaction scale figures are pre-recorded, reported results
+shown on screen -- never re-run live in front of an audience.
+
+**Calibration runtime.** 2,000 replications (docs/DECISIONS.md,
+2026-09-01 scale pass) takes on the order of half an hour; even 500
+replications takes several minutes. Decision: calibration is always
+precomputed before the demo and shown as a completed dashboard screen. It
+is never re-run live under any circumstance -- stated here as a hard
+rule the same way docs/EXPERIMENT-PROTOCOL.md states its own frozen
+parameters.

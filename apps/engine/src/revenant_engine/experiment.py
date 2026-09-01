@@ -82,6 +82,19 @@ PolicyFn = Callable[[Diagnosis, "RecoveryModel | None"], ProposedAction]
 #: (asserted in tests/test_experiment.py).
 CONTROL_ACTION = "retry_with_backoff"
 
+#: The arithmetic floor for run_experiment: both estimates need at least
+#: 2 transactions per arm to mean anything -- a single-point "arm" has a
+#: mean but a bootstrap resample of it is a degenerate constant, not an
+#: estimate of variability. 2 per arm x 2 arms is the floor. Checked
+#: BEFORE generate_population is ever called (2026-09-01 scale/robustness
+#: pass, docs/DECISIONS.md) -- a silent nan or an empty interval flowing
+#: downstream is worse than a loud refusal here. This alone does not
+#: fully guarantee 2-per-arm for every n >= MIN_TRANSACTIONS, since
+#: _assign_arms balances PER STRATUM (up to ~21 (grid_cell, band) groups),
+#: not globally -- see the second, belt-and-braces check inside
+#: run_experiment, right after real assignment.
+MIN_TRANSACTIONS = 4
+
 
 class TransactionRow(BaseModel):
     """One transaction's full simulated outcome -- the zero-abstraction
@@ -364,7 +377,7 @@ def _bootstrap_stratified(rows: tuple[TransactionRow, ...], seed: int) -> tuple[
 
 
 def _bootstrap_and_ztest(
-    rows: tuple[TransactionRow, ...], seed: int, bootstrap_method: BootstrapMethod = "pooled"
+    rows: tuple[TransactionRow, ...], seed: int, bootstrap_method: BootstrapMethod = "stratified"
 ) -> ExperimentEstimates:
     control = [r for r in rows if r.arm == "control"]
     treatment = [r for r in rows if r.arm == "treatment"]
@@ -434,7 +447,7 @@ def run_experiment(
     seed: int,
     policy: PolicyFn | None = None,
     model: RecoveryModel | None = None,
-    bootstrap_method: BootstrapMethod = "pooled",
+    bootstrap_method: BootstrapMethod = "stratified",
 ) -> ExperimentResult:
     """Runs one full randomised holdout experiment per
     docs/EXPERIMENT-PROTOCOL.md. `policy` defaults to policy.propose_action
@@ -443,13 +456,26 @@ def run_experiment(
     that module and _coupling_guard's own docstring for why this is
     independent of the mandatory guard below).
 
-    `bootstrap_method` defaults to "pooled" (the ORIGINAL, unstratified
-    resampling -- preserved, not removed, so both methods stay directly
-    comparable; see _bootstrap_pooled's own docstring for the measured
-    over-coverage this default carries and docs/DECISIONS.md for the
-    full diagnosis). Pass "stratified" for the corrected estimator that
-    respects the (grid_cell, amount_band) stratification the arms were
-    actually assigned under."""
+    `bootstrap_method` defaults to "stratified" (the CORRECTED estimator,
+    since 2026-09-01's scale/robustness pass -- respects the
+    (grid_cell, amount_band) stratification the arms were actually
+    assigned under). "pooled" (the ORIGINAL, unstratified resampling) is
+    preserved, not removed, and stays selectable for direct comparison;
+    see _bootstrap_pooled's own docstring for the measured over-coverage
+    it carries (99.40% observed vs. 95% nominal at N=2000, 500
+    replications) and docs/DECISIONS.md for the full diagnosis and the
+    stratified fix's measured correction (93.80%). Nothing that reads
+    this module's default -- including every dashboard consumer -- may
+    assume "pooled" any more; that assumption flipped on this date.
+
+    Raises ValueError immediately, before generate_population is ever
+    called, if n < MIN_TRANSACTIONS -- see that constant's own docstring."""
+    if n < MIN_TRANSACTIONS:
+        raise ValueError(
+            f"run_experiment requires n >= {MIN_TRANSACTIONS} (need at least 2 transactions "
+            f"per arm to produce an estimate), got {n}"
+        )
+
     active_model = model if model is not None else default_model()
     active_policy: PolicyFn = policy if policy is not None else propose_action
 
@@ -462,6 +488,18 @@ def run_experiment(
 
     assign_rng = np.random.default_rng(seed + 1)
     arms = _assign_arms(grid_cells, bands, assign_rng)
+
+    n_control = int(np.sum(arms == "control"))
+    n_treatment = int(np.sum(arms == "treatment"))
+    if n_control < 2 or n_treatment < 2:
+        raise RuntimeError(
+            f"run_experiment(n={n}) produced {n_control} control / {n_treatment} treatment "
+            f"transactions after stratified assignment -- below the 2-per-arm floor "
+            f"MIN_TRANSACTIONS is meant to guarantee. _assign_arms balances PER STRATUM, not "
+            f"globally, so a pathological small-n case can still fall below the floor even "
+            f"above it; this is that case caught explicitly rather than flowing a degenerate "
+            f"estimate downstream."
+        )
 
     outcome_rng = np.random.default_rng(seed + 2)
     rows: list[TransactionRow] = []

@@ -190,7 +190,7 @@ def run_calibration(
     *,
     master_seed: int,
     model: RecoveryModel | None = None,
-    bootstrap_method: BootstrapMethod = "pooled",
+    bootstrap_method: BootstrapMethod = "stratified",
 ) -> CalibrationResult:
     """Runs both calibration conditions per docs/EXPERIMENT-PROTOCOL.md's
     "## Calibration check", over the SAME `replications` seeds (see this
@@ -199,11 +199,14 @@ def run_calibration(
     retraining per replication would be wasteful and would make each
     replication's policy differ, which is not what calibration measures.
 
-    `bootstrap_method` (default "pooled", matching experiment.py's own
-    default) selects which of experiment.py's two bootstrap
-    implementations every one of those `2 * replications` calls uses --
-    see docs/DECISIONS.md for the measured pooled-vs-stratified
-    comparison this parameter exists to reproduce on demand.
+    `bootstrap_method` (default "stratified", matching experiment.py's own
+    default since 2026-09-01's scale/robustness pass) selects which of
+    experiment.py's two bootstrap implementations every one of those
+    `2 * replications` calls uses. "pooled" stays selectable for direct
+    comparison -- see docs/DECISIONS.md for the measured pooled-vs-
+    stratified comparison this parameter exists to reproduce on demand
+    (500-replication run: pooled 99.40% coverage vs. stratified 93.80%,
+    against a 95% nominal target).
 
     NO TUNING TOWARD 95% happens anywhere in this function or in
     experiment.py's own bootstrap. If coverage_rate or the null

@@ -66,11 +66,13 @@ class ExperimentRequest(BaseModel):
     # returned on the result if omitted, never silently reproducible by
     # accident.
     seed: int | None = None
-    # "pooled" default matches experiment.py's own default (the original
-    # method, kept available rather than replaced) -- see
-    # docs/DECISIONS.md for the measured pooled-vs-stratified comparison
-    # this parameter exists to let a caller reproduce.
-    bootstrap_method: BootstrapMethod = "pooled"
+    # "stratified" default matches experiment.py's own default since
+    # 2026-09-01's scale/robustness pass (the corrected estimator; the
+    # dashboard must always read this default). "pooled" (the original
+    # method) is kept available, not removed -- see docs/DECISIONS.md for
+    # the measured pooled-vs-stratified comparison this parameter exists
+    # to let a caller reproduce.
+    bootstrap_method: BootstrapMethod = "stratified"
 
 
 @app.post("/experiment")
@@ -89,7 +91,9 @@ class CalibrationRequest(BaseModel):
     # default -- see docs/DECISIONS.md for that run's actual numbers.
     replications: int = 20
     master_seed: int | None = None
-    bootstrap_method: BootstrapMethod = "pooled"
+    # "stratified" default, matching /experiment's own -- see
+    # ExperimentRequest.bootstrap_method's comment above.
+    bootstrap_method: BootstrapMethod = "stratified"
 
 
 @app.post("/calibration")
