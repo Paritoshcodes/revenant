@@ -1,8 +1,10 @@
 """tests/test_main.py
 
-Covers the thin POST /population and POST /propose endpoints: routing
-only, per main.py's own doc comment -- the generation logic lives in
-test_population.py, the policy logic in test_policy.py / test_model.py.
+Covers the thin POST /population, POST /propose, and POST /classify
+endpoints: routing only, per main.py's own doc comment -- the generation
+logic lives in test_population.py, the policy logic in test_policy.py /
+test_model.py, the classification logic in test_classifier.py /
+test_confidence_gate.py.
 """
 
 from __future__ import annotations
@@ -82,3 +84,52 @@ def test_propose_endpoint_accepts_full_diagnosis():
     )
     assert response.status_code == 200
     assert response.json()["action"] == "retry_on_timing_window"
+
+
+def test_classify_endpoint_exact_hit_via_error_reason_needs_no_key():
+    """The fast path: ExactClassifier never touches the LLM at all, so
+    this passes regardless of whether GROQ_API_KEY happens to be
+    configured in this environment -- a real exercise of the exact-only
+    path, not a mock."""
+    response = client.post(
+        "/classify",
+        json={
+            "error_code": "BAD_REQUEST_ERROR",
+            "error_description": "irrelevant when error_reason is given",
+            "error_reason": "insufficient_fund",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["grid_cell"] == "customer/payment_authorization"
+    assert body["confidence"] == 1.0
+    assert body["gated"] is False
+
+
+def test_classify_endpoint_returns_503_when_llm_path_needed_and_no_key_present(monkeypatch, tmp_path):
+    """Forces the no-key condition explicitly (monkeypatch + a cleared
+    cache) rather than relying on ambient environment state either way --
+    this environment now genuinely HAS a GROQ_API_KEY configured (used
+    for the one-off real-API evaluation run, never inside the automated
+    test suite -- see classifier_eval.py and docs/DECISIONS.md), so this
+    test must isolate itself from that or it would silently stop testing
+    the 503 path at all."""
+    from revenant_engine import classifier as classifier_module
+    from revenant_engine import main as main_module
+
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setattr(classifier_module, "_ENV_PATH", tmp_path / "nonexistent.env")
+    main_module._default_llm_classifier.cache_clear()
+
+    response = client.post(
+        "/classify",
+        json={
+            "error_code": "BAD_REQUEST_ERROR",
+            "error_description": "Some genuinely unfamiliar free-text failure description.",
+        },
+    )
+
+    assert response.status_code == 503
+    assert "GROQ_API_KEY" in response.json()["detail"]
+
+    main_module._default_llm_classifier.cache_clear()  # leave no cached state behind for later tests
