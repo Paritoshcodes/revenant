@@ -1,0 +1,451 @@
+/**
+ * REVENANT / EVIDENCE CONSOLE — design system
+ *
+ * The conceit (docs/DESIGN-BRIEF.md PART THREE): everything Revenant
+ * emits is EVIDENCE OF A CLASS, and this is where it is examined.
+ *
+ * ── THE CONTRAST LADDER ──────────────────────────────────────────────
+ * Four bands with real separation between them, expressed as white
+ * alpha over near-black so the ratios are legible in the token itself.
+ * Nothing in the app may pick a grey outside this ladder.
+ *
+ *   chrome   10-16%   rules, panel borders, axis lines, tick marks
+ *   ghost    22%      unlit segments, empty slots, placeholder digits
+ *   label    42%      secondary labels, captions, meta
+ *   prose    70%      primary running prose, headings
+ *   data     97%      every figure. The brightest thing on any screen.
+ *
+ * The rule that follows from it: A FIGURE IS ALWAYS BRIGHTER THAN THE
+ * PROSE DESCRIBING IT. If a number is dimmer than its own caption, the
+ * screen is telling the viewer to read the wrong thing.
+ *
+ * ── THE ACCENT ───────────────────────────────────────────────────────
+ * Exactly one, sodium amber, and exactly two uses, ever:
+ *   1. the REFERENCE marker and its label — the anchor of the argument
+ *   2. recovered value, once data exists
+ * Nothing else. A viewer should learn within seconds that amber means
+ * "this is the thing that matters".
+ *
+ * Refusals therefore CANNOT be amber. They take a cool steel instead:
+ * low chroma, unmistakably not an error, and maximally far from the
+ * accent so the two can never be confused at a glance.
+ *
+ * ── CASE ─────────────────────────────────────────────────────────────
+ * Uppercase + tracking is reserved for exactly three things: the status
+ * rail, section eyebrows, and axis ticks. Everything else — captions,
+ * prose, secondary labels, empty-state headlines — is sentence case.
+ * When everything shouts, nothing is emphasised.
+ */
+
+@import 'tailwindcss';
+
+@theme {
+  /* ---- Ink. Near-black, neutral-warm. Never grey-blue. -------------- */
+  --color-ink-000: #070708;
+  --color-ink-050: #0b0b0d;
+  --color-ink-100: #101012;
+  --color-ink-150: #151517;
+
+  /* ---- The ladder -------------------------------------------------- */
+  --color-chrome-soft: rgb(255 255 255 / 0.10);
+  --color-chrome: rgb(255 255 255 / 0.11);
+  --color-chrome-hard: rgb(255 255 255 / 0.16);
+
+  --color-fg-ghost: rgb(255 255 255 / 0.22);
+  --color-fg-label: rgb(255 255 255 / 0.42);
+  --color-fg-prose: rgb(255 255 255 / 0.70);
+  --color-fg-data: rgb(255 255 255 / 0.97);
+
+  /* Unlit seven-segment backdrop: present, but clearly off. */
+  --color-unlit: rgb(255 255 255 / 0.085);
+
+  /* ---- THE accent: sodium amber. REFERENCE, and recovered value. --- */
+  --color-accent: #ffa51f;
+  --color-accent-dim: rgb(255 165 31 / 0.45);
+  --color-accent-line: rgb(255 165 31 / 0.7);
+  --color-accent-wash: rgb(255 165 31 / 0.09);
+
+  /* ---- Refusal: deliberate non-action. Cool steel, never amber,
+          never red. A refusal is the system working. ----------------- */
+  --color-refuse: #8fa8be;
+  --color-refuse-dim: rgb(143 168 190 / 0.4);
+  --color-refuse-wash: rgb(143 168 190 / 0.07);
+
+  /* ---- Fault: genuine failure only. The ONLY red in the app. ------- */
+  --color-fault: #ee5a5f;
+  --color-fault-wash: rgb(238 90 95 / 0.1);
+
+  /* ---- Type -------------------------------------------------------- */
+  /* Archivo: a sharp grotesque with real authority and tighter
+     apertures than the usual UI default. It carries every heading and
+     every line of prose. JetBrains Mono is reserved, absolutely, for
+     figures, ids, hashes and code -- the contrast between an authored
+     display face and tabular mono is what stops this reading as
+     generated. */
+  --font-sans: 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+
+  --text-micro: 0.625rem;
+  --text-micro--line-height: 0.875rem;
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.0625rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  /* THE GAP IS DELIBERATE. Nothing lives between 15px and 28px.
+     Everything is either chrome (10-15px) or a figure (28px and up), so
+     the eye is never asked to rank two things of similar size. */
+  --text-lg: 0.9375rem;
+  --text-lg--line-height: 1.375rem;
+  /* Screen titles: the only sans between chrome and figure scale, and
+     the one place the display face carries real weight. */
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 1.5rem;
+
+  --text-fig-sm: 1.75rem;
+  --text-fig-sm--line-height: 1;
+  --text-fig: 2.75rem;
+  --text-fig--line-height: 1;
+  --text-fig-lg: 4.5rem;
+  --text-fig-lg--line-height: 1;
+  /* The hero. At most one per screen. */
+  --text-hero: clamp(5.5rem, 12vw, 12rem);
+  --text-hero--line-height: 0.86;
+  /* The verdict, directly beneath the hero. */
+  --text-verdict: clamp(1.5rem, 3.2vw, 2.75rem);
+  --text-verdict--line-height: 1;
+
+  --tracking-label: 0.14em;
+  --tracking-tight: -0.015em;
+
+  /* ---- Motion ------------------------------------------------------ */
+  --duration-tick: 90ms;
+  --duration-fast: 160ms;
+  --duration-wipe: 240ms;
+  --duration-base: 260ms;
+  --duration-draw: 520ms;
+  --duration-slow: 420ms;
+  --duration-piece: 800ms;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ---- Chrome geometry --------------------------------------------- */
+  --h-masthead: 2.75rem;
+  --h-rail: 3.25rem;
+  --h-footer: 1.75rem;
+}
+
+/* ====================================================================
+   BASE
+   ==================================================================== */
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink-000);
+  color: var(--color-fg-prose);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-ink-000);
+}
+
+/* ====================================================================
+   FIGURES — every number, id, hash and code
+   ==================================================================== */
+
+.fig {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum', 'zero';
+  letter-spacing: var(--tracking-tight);
+}
+
+/* Uppercase + tracking. RESERVED: status rail, section eyebrows, axis
+   ticks. Nothing else — see the case rule in this file's header. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  line-height: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-fg-label);
+}
+
+/* Sentence-case caption. The default for anything explanatory. */
+.caption {
+  font-size: var(--text-2xs);
+  line-height: 1.0625rem;
+  color: var(--color-fg-label);
+}
+
+/* ====================================================================
+   EVIDENCE CLASS — surface, not hue
+   ==================================================================== */
+
+.hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgb(255 255 255 / 0.1) 0 1px,
+    transparent 1px 5px
+  );
+}
+
+/* ====================================================================
+   MATERIAL — a fixed grain, and a raised edge on panels
+   ==================================================================== */
+
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0.032;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* One-pixel top highlight: the panel reads as a raised face rather than
+   a rectangle drawn on the background. */
+.raised {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+
+/* ====================================================================
+   FOCUS
+   ==================================================================== */
+
+:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 1px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.row-cursor {
+  box-shadow: inset 2px 0 0 var(--color-fg-data);
+  background-color: var(--color-ink-150);
+}
+
+/* ====================================================================
+   MOTION — transform, opacity, clip-path and stroke-dashoffset only.
+   Nothing loops. Nothing moves while idle.
+   ==================================================================== */
+
+/* Panels WIPE rather than fade. A wipe reads as an instrument drawing
+   its own face; a fade reads as a webpage loading. */
+@keyframes panel-wipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.panel-wipe {
+  animation: panel-wipe var(--duration-wipe) var(--ease-out-quart) both;
+  animation-delay: calc(var(--panel-index, 0) * 60ms);
+}
+
+/* Prose rises into place behind a mask, 40ms apart. First paint only:
+   a CSS animation restarts on remount, never on re-render, so this is
+   structurally once-per-screen-visit rather than policed in JS. */
+@keyframes mask-rise {
+  from {
+    clip-path: inset(0 0 100% 0);
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    clip-path: inset(0 0 -10% 0);
+    transform: translate3d(0, 0, 0);
+  }
+}
+.mask-rise {
+  animation: mask-rise var(--duration-base) var(--ease-out-expo) both;
+  animation-delay: calc(var(--rise-index, 0) * 40ms);
+}
+
+/* Axes, scales and rules DRAW themselves.
+ *
+ * NOT pathLength-normalised, and --draw-len is deliberately enormous.
+ * Two failures got it here, both found by looking at the rendered
+ * result rather than by reasoning:
+ *
+ *   1. `pathLength="1"` + `stroke-dasharray: 1` looks like it should
+ *      work and does not — the CSS dash resolves in user units anyway,
+ *      so a 100-unit axis rendered as fifty 1-unit dashes.
+ *   2. Replacing it with a dash of 400 user units still cut the axis
+ *      off partway. These SVGs use `vector-effect: non-scaling-stroke`,
+ *      which by definition moves the stroke — dashes included — into
+ *      SCREEN space, so 400 meant 400 CSS pixels, not 400 of the 100
+ *      viewBox units the axis spans.
+ *
+ * So --draw-len must exceed the widest the line can ever RENDER, in
+ * pixels. 3000 covers any viewport this will run on.
+ *
+ * A line that must ALSO be dashed in its rest state (the NULL boundary)
+ * cannot use this: one stroke-dasharray cannot express both a draw and
+ * a dash pattern. Those fade in instead, and say so at the callsite. */
+@keyframes draw-line {
+  from {
+    stroke-dashoffset: var(--draw-len, 3000);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.draw {
+  stroke-dasharray: var(--draw-len, 3000);
+  animation: draw-line var(--duration-draw) var(--ease-out-quart) both;
+  animation-delay: calc(var(--draw-index, 0) * 90ms);
+}
+
+@keyframes resolve-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+.resolve-in {
+  animation: resolve-in var(--duration-base) var(--ease-out-expo) both;
+}
+
+@keyframes console-arrive {
+  from {
+    opacity: 0;
+    transform: scale(0.994);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.console-arrive {
+  animation: console-arrive var(--duration-slow) var(--ease-out-expo) both;
+}
+
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 3px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+.screen-in {
+  animation: screen-in var(--duration-fast) var(--ease-out-quart) both;
+}
+
+/* THE MARK establishing itself: the span scales outward from its own
+   centre, which is what an interval does — it is found by widening from
+   an estimate, not by sweeping in from one end. Used for the wordmark,
+   every loading state in the app (there are no spinners), and the hero
+   interval on THE NUMBER. */
+@keyframes bracket-span {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+.bracket-span {
+  animation: bracket-span var(--duration-draw) var(--ease-out-expo) both;
+  animation-delay: calc(var(--bracket-delay, 0) * 1ms);
+}
+
+/* The point estimate lands FIRST, before the span that qualifies it.
+   Evidence, then uncertainty — the same order the whole screen argues in. */
+@keyframes bracket-centre {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.bracket-centre {
+  animation: bracket-centre var(--duration-base) var(--ease-out-expo) both;
+}
+
+/* Resample bars assemble left to right, growing from the baseline via
+   scaleY. Transform only: animating height would relayout 48 rects a
+   frame, and the shape of the distribution is the information, so it
+   has to arrive at 60fps. */
+@keyframes hist-bar {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+.hist-bar {
+  animation: hist-bar var(--duration-base) var(--ease-out-quart) both;
+}
+
+/* Row entry. The stagger IS the outbound throttle made visible. */
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translate3d(-3px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+.row-in {
+  animation: row-in var(--duration-base) var(--ease-out-quart) both;
+  animation-delay: calc(var(--row-index, 0) * 22ms);
+}
+
+/* ====================================================================
+   REDUCED MOTION — instant, still fully functional
+   ==================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* The pointer-proximity band is a hover affordance, not information;
+     it simply does not run. */
+  .proximity-band {
+    display: none !important;
+  }
+}
