@@ -1,0 +1,189 @@
+{
+  "generated": "2026-09-02",
+  "source": "apps/gateway/scripts/export-dashboard-fixtures.mts",
+  "links": 629,
+  "headSeq": 1355,
+  "headHash": "4ae2221509d2edcaee6cf96b5bdc1175ee95eff9cbcb05c47be4607f4839fc49",
+  "genesisSeq": 433,
+  "genesisPrevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "window": [
+    {
+      "seq": 1332,
+      "hash": "5af06e12002b9944e3b5dc870f4575b1dbf7076e61b08fedf2ebc54daef57b38",
+      "prevHash": "1ce73f0587aa1b5d9233ee2d2bc77bbbaa16ef3491fc73ea6adf08b1ce4f9af7",
+      "event": "attempt_started",
+      "txn": "txn_batch_mtibdbso_27"
+    },
+    {
+      "seq": 1333,
+      "hash": "e6f705c05858d4b73904de41e2cbefc7f356dc3bc7792a94eb9f912dd45a6fe2",
+      "prevHash": "5af06e12002b9944e3b5dc870f4575b1dbf7076e61b08fedf2ebc54daef57b38",
+      "event": "attempt_settled",
+      "txn": "txn_batch_mtibdbso_27"
+    },
+    {
+      "seq": 1334,
+      "hash": "ef4c18b4076a23772d1581d84153567f26489a9cbf128f11d666e00eb278c81a",
+      "prevHash": "e6f705c05858d4b73904de41e2cbefc7f356dc3bc7792a94eb9f912dd45a6fe2",
+      "event": "decision_made",
+      "txn": "txn_batch_mtibdbso_27"
+    },
+    {
+      "seq": 1335,
+      "hash": "9b55401cadde972dd929c9358a11ff0f2b7223d12b05de4c6b4dbf0444c315e1",
+      "prevHash": "ef4c18b4076a23772d1581d84153567f26489a9cbf128f11d666e00eb278c81a",
+      "event": "attempt_started",
+      "txn": "txn_batch_mtibdbso_27"
+    },
+    {
+      "seq": 1336,
+      "hash": "797a7e5c8a187653fdc6397cb795b087e6bee0dfde90454a290eef15aa92d01e",
+      "prevHash": "9b55401cadde972dd929c9358a11ff0f2b7223d12b05de4c6b4dbf0444c315e1",
+      "event": "attempt_settled",
+      "txn": "txn_batch_mtibdbso_27"
+    },
+    {
+      "seq": 1337,
+      "hash": "d1d3728819fd3e5e7f1d58f4c5cf949c4fe0240606a92c0772f4145cbb8311d2",
+      "prevHash": "797a7e5c8a187653fdc6397cb795b087e6bee0dfde90454a290eef15aa92d01e",
+      "event": "decision_made",
+      "txn": "txn_batch_mtibdbso_28"
+    },
+    {
+      "seq": 1338,
+      "hash": "0e305478e96591f1c0a7edb41d896d31509c6a78543fb76cac8ee2e625d52da5",
+      "prevHash": "d1d3728819fd3e5e7f1d58f4c5cf949c4fe0240606a92c0772f4145cbb8311d2",
+      "event": "attempt_started",
+      "txn": "txn_batch_mtibdbso_28"
+    },
+    {
+      "seq": 1339,
+      "hash": "87a36116ba1c32af5344eb94dd65e41e5256952cac8051d8fcf82dccfb8dbdc9",
+      "prevHash": "0e305478e96591f1c0a7edb41d896d31509c6a78543fb76cac8ee2e625d52da5",
+      "event": "attempt_settled",
+      "txn": "txn_batch_mtibdbso_28"
+    },
+    {
+      "seq": 1340,
+      "hash": "bba4783f9e37defda36e7936375ebf9613d63aef16407427759a4f7c73568fbb",
+      "prevHash": "87a36116ba1c32af5344eb94dd65e41e5256952cac8051d8fcf82dccfb8dbdc9",
+      "event": "decision_made",
+      "txn": "txn_batch_mtibdbso_29"
+    },
+    {
+      "seq": 1341,
+      "hash": "282d8b275a241d8fe4a238654bdbefc20b1f72477eaff0dfab03249833bd2926",
+      "prevHash": "bba4783f9e37defda36e7936375ebf9613d63aef16407427759a4f7c73568fbb",
+      "event": "attempt_started",
+      "txn": "txn_batch_mtibdbso_29"
+    },
+    {
+      "seq": 1342,
+      "hash": "b47bfc1b3fef60a620c8f5fb36116c9a1712748c6e1c8e3bc1dcfa94ae0e7df1",
+      "prevHash": "282d8b275a241d8fe4a238654bdbefc20b1f72477eaff0dfab03249833bd2926",
+      "event": "attempt_settled",
+      "txn": "txn_batch_mtibdbso_29"
+    },
+    {
+      "seq": 1343,
+      "hash": "65f8ae3608f1d7a3ae2f61065ee170c258e0842d8da658e25a6b89b7b4c05084",
+      "prevHash": "b47bfc1b3fef60a620c8f5fb36116c9a1712748c6e1c8e3bc1dcfa94ae0e7df1",
+      "event": "transaction_closed",
+      "txn": "txn_batch_mtibdbso_29"
+    },
+    {
+      "seq": 1344,
+      "hash": "b969b144505148e3cad5774fac79272aacb97046a8d91be102ff5fe34a5d9908",
+      "prevHash": "65f8ae3608f1d7a3ae2f61065ee170c258e0842d8da658e25a6b89b7b4c05084",
+      "event": "decision_made",
+      "txn": "txn_batch_mtibdbso_27"
+    },
+    {
+      "seq": 1345,
+      "hash": "f07840769f7fcebade81896665646a1c1836409fd5c0f9158fa7a4e70ba44fcc",
+      "prevHash": "b969b144505148e3cad5774fac79272aacb97046a8d91be102ff5fe34a5d9908",
+      "event": "attempt_started",
+      "txn": "txn_batch_mtibdbso_27"
+    },
+    {
+      "seq": 1346,
+      "hash": "38aba6cfc7a30be7ada34ecdc16db8f3023973dfa3700f3d77df5c5e03e9a694",
+      "prevHash": "f07840769f7fcebade81896665646a1c1836409fd5c0f9158fa7a4e70ba44fcc",
+      "event": "attempt_settled",
+      "txn": "txn_batch_mtibdbso_27"
+    },
+    {
+      "seq": 1347,
+      "hash": "95b00a085b47bd6c595647e7006417f7554c2f5526b7e4cd29aca25bb1b5766a",
+      "prevHash": "38aba6cfc7a30be7ada34ecdc16db8f3023973dfa3700f3d77df5c5e03e9a694",
+      "event": "transaction_closed",
+      "txn": "txn_batch_mtibdbso_27"
+    },
+    {
+      "seq": 1348,
+      "hash": "a2604b98489341a1604f69a44b651a9023f7ab3d89cd8e6a3fc32091d965cbb6",
+      "prevHash": "95b00a085b47bd6c595647e7006417f7554c2f5526b7e4cd29aca25bb1b5766a",
+      "event": "decision_made",
+      "txn": "txn_batch_mtibdbso_28"
+    },
+    {
+      "seq": 1349,
+      "hash": "0f1ff262eed43b7f44b27d2c51899be0c30c5edc347143dcd2e8726308d87a59",
+      "prevHash": "a2604b98489341a1604f69a44b651a9023f7ab3d89cd8e6a3fc32091d965cbb6",
+      "event": "attempt_started",
+      "txn": "txn_batch_mtibdbso_28"
+    },
+    {
+      "seq": 1350,
+      "hash": "86b30a558bebdd941599e5769e1f8af34b984f88680dd73db4ef1d91825efd69",
+      "prevHash": "0f1ff262eed43b7f44b27d2c51899be0c30c5edc347143dcd2e8726308d87a59",
+      "event": "attempt_settled",
+      "txn": "txn_batch_mtibdbso_28"
+    },
+    {
+      "seq": 1351,
+      "hash": "eb9bfe4ebb924f14abc1af0bb5976f176c3e6cd4806741663014b4d7a6f1aeb3",
+      "prevHash": "86b30a558bebdd941599e5769e1f8af34b984f88680dd73db4ef1d91825efd69",
+      "event": "decision_made",
+      "txn": "txn_batch_mtibdbso_28"
+    },
+    {
+      "seq": 1352,
+      "hash": "d3d845cef846024fd4c055012fb99692f7cd518bd1626f3166cd8561b29a5dd1",
+      "prevHash": "eb9bfe4ebb924f14abc1af0bb5976f176c3e6cd4806741663014b4d7a6f1aeb3",
+      "event": "attempt_started",
+      "txn": "txn_batch_mtibdbso_28"
+    },
+    {
+      "seq": 1353,
+      "hash": "e395fbe3b385a6e1de23c6338d0aa5caccc4b35d62d036235fef0aa08c92f779",
+      "prevHash": "d3d845cef846024fd4c055012fb99692f7cd518bd1626f3166cd8561b29a5dd1",
+      "event": "attempt_settled",
+      "txn": "txn_batch_mtibdbso_28"
+    },
+    {
+      "seq": 1354,
+      "hash": "80a7c207da509994fdfe42122208d23aa4bbd949261c207f51545c1d489cc831",
+      "prevHash": "e395fbe3b385a6e1de23c6338d0aa5caccc4b35d62d036235fef0aa08c92f779",
+      "event": "guardrail_veto",
+      "txn": "txn_batch_mtibdbso_28"
+    },
+    {
+      "seq": 1355,
+      "hash": "4ae2221509d2edcaee6cf96b5bdc1175ee95eff9cbcb05c47be4607f4839fc49",
+      "prevHash": "80a7c207da509994fdfe42122208d23aa4bbd949261c207f51545c1d489cc831",
+      "event": "transaction_closed",
+      "txn": "txn_batch_mtibdbso_28"
+    }
+  ],
+  "refusal": {
+    "refused": true,
+    "sql": "UPDATE audit_log SET payload = '{\"tampered\":true}'::jsonb WHERE seq = 1355",
+    "seq": 1355,
+    "message": "audit_log is append only: UPDATE rejected on seq 1355",
+    "code": "23001",
+    "severity": "ERROR",
+    "where": "PL/pgSQL function revenant_append_only() line 3 at RAISE",
+    "capturedAt": "2026-09-02 19:53:49"
+  }
+}

@@ -1,29 +1,31 @@
 /**
  * CUSTODY — the hash chain, which is literally a chain of custody.
  *
- * Every audit row stores prev_hash and hash = sha256(prev_hash +
- * canonical_json(payload)), and Postgres refuses UPDATE, DELETE and
- * TRUNCATE on the table outright. So the claim this screen makes is not
- * "we log things"; it is "the record cannot have been altered, and here
- * is the arithmetic that proves it".
+ * The shortest and most visceral proof in the project: a real UPDATE
+ * against audit_log, refused by the database, with the verbatim error.
+ * So the chain is the centrepiece and it is interactive — drawn,
+ * scrubbable, verifiable, and breakable — rather than an illustration
+ * with prose underneath.
  *
- * The link structure renders with no rows loaded because the STRUCTURE
- * is the point: genesis is 64 zeros, every link names its predecessor,
- * and a break is locatable to an exact seq.
+ * Guardrail vetoes appear in the chain as first-class events (the
+ * audit payload's own `kind`), marked in the refusal treatment, because
+ * a refusal to act is evidence in its own right.
  */
-import { CUSTODY } from '../data/facts';
+import { ChainHero } from '../components/hero/ChainHero';
 import { ClassChip } from '../components/primitives/ClassChip';
-import { EmptyExhibit } from '../components/primitives/EmptyExhibit';
+import { Exhibit } from '../components/primitives/Exhibit';
 import { Fig } from '../components/primitives/Fig';
-import { Bracket } from '../components/identity/Bracket';
-import { HeroFigure } from '../components/hero/HeroFigure';
+import { MaskRise } from '../components/primitives/MaskRise';
 import { Panel } from '../components/primitives/Panel';
+import { ProximityRows } from '../components/primitives/ProximityRows';
 import { ScreenHead } from '../components/primitives/ScreenHead';
 import { Tiered } from '../components/primitives/Tier';
-
-const GENESIS = '0'.repeat(64);
+import { CHAIN, REFUSAL_EVENTS, shortHash } from '../data/chain';
+import { cn } from '../lib/cn';
 
 export function CustodyScreen(): JSX.Element {
+  const recent = [...CHAIN.window].reverse();
+
   return (
     <div className="flex flex-col">
       <ScreenHead
@@ -38,125 +40,114 @@ export function CustodyScreen(): JSX.Element {
       />
 
       <div className="grid grid-cols-2 border-b border-chrome lg:grid-cols-4">
-        <div className="flex flex-col gap-1.5 border-r border-chrome px-4 py-3">
-          <span className="eyebrow">LINKS</span>
-          <Fig className="text-xl text-fg-data">{CUSTODY.links}</Fig>
-        </div>
-        <div className="flex flex-col gap-1.5 border-r border-chrome px-4 py-3">
-          <span className="eyebrow">HEAD SEQ</span>
-          <Fig className="text-xl text-fg-data">{CUSTODY.headSeq}</Fig>
-        </div>
-        <div className="flex flex-col gap-1.5 border-r border-chrome px-4 py-3">
-          <span className="eyebrow">STATE</span>
-          <span className="flex items-center gap-2">
-            <span aria-hidden className="h-[9px] w-[9px] bg-fg-data" />
-            <Fig className="text-xl text-fg-data">UNBROKEN</Fig>
-          </span>
-        </div>
-        <div className="flex flex-col gap-1.5 px-4 py-3">
-          <span className="eyebrow">ENFORCED BY</span>
-          <Fig className="text-xl text-fg-prose">POSTGRES</Fig>
-        </div>
+        {[
+          ['LINKS', CHAIN.links.toLocaleString('en-IN')],
+          ['HEAD SEQ', String(CHAIN.headSeq)],
+          ['STATE', 'UNBROKEN'],
+          ['ENFORCED BY', 'POSTGRES'],
+        ].map(([k, v], i) => (
+          <div key={k} className={cn('flex flex-col gap-1.5 px-4 py-3', i < 3 && 'border-r border-chrome')}>
+            <span className="eyebrow">{k}</span>
+            <Fig className="text-fig-sm leading-none text-fg-data">{v}</Fig>
+          </div>
+        ))}
       </div>
 
-      <div className="grid gap-px bg-chrome p-px">
+      <div className="grid gap-px bg-chrome p-px xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
         <Panel
-          label="LINK STRUCTURE"
-          meta={<span className="eyebrow text-fg-ghost">sha256(prev_hash + canonical_json(payload))</span>}
+          label="EXHIBIT / CHAIN OF CUSTODY"
+          meta={
+            <span className="eyebrow text-fg-ghost">
+              sha256(prev_hash + canonical_json(payload)) · WINDOW {CHAIN.window[0]?.seq}–{CHAIN.headSeq}
+            </span>
+          }
           className="border-0"
-          bodyClassName="px-6 py-7 sm:px-10"
+          bodyClassName="px-6 pb-8 pt-9 sm:px-12"
           index={0}
         >
-          {/* A chain is already a span between two endpoints, so the mark
-              is its native grammar here, not an applied decoration:
-              genesis and head ARE the serifs. */}
-          <HeroFigure
-            label="Custody chain"
-            value={String(CUSTODY.links)}
-            caption="links, genesis to head, unbroken"
-            provenance={[
-              ['SOURCE', 'audit_log'],
-              ['HEAD SEQ', String(CUSTODY.headSeq)],
-              ['ENFORCED BY', 'POSTGRES'],
-              ['STATE', CUSTODY.verified ? 'UNBROKEN' : 'BROKEN'],
-            ]}
-          >
-            <p className="caption max-w-2xl leading-relaxed">
-              Every row stores <Fig className="text-fg-data">prev_hash</Fig> and{' '}
-              <Fig className="text-fg-data">hash = sha256(prev_hash + canonical_json(payload))</Fig>. Reading the chain
-              forward from genesis and recomputing each hash is the whole verification: any altered payload changes its
-              own hash, which breaks the link the next row names, and the verifier reports the first seq where that
-              happens. Append-only is enforced by the database — UPDATE, DELETE and TRUNCATE are all refused outright —
-              so a break can only come from a broken writer, never from a quiet edit.
-            </p>
-          </HeroFigure>
+          <MaskRise index={0}>
+            <ChainHero />
+          </MaskRise>
+        </Panel>
 
-          <div className="mt-8">
-            <Bracket tone="data" serif={18} weight={2} from={0.05} to={0.95} centre={null} animate />
-            <div className="relative mt-2.5 h-10">
-              <div className="absolute -translate-x-1/2 text-center" style={{ left: '5%' }}>
-                <Fig className="block text-2xs text-fg-prose">SEQ 1</Fig>
-                <span className="eyebrow">GENESIS · 64 ZEROS</span>
-              </div>
-              <div className="absolute -translate-x-1/2 text-center" style={{ left: '95%' }}>
-                <Fig className="block text-2xs text-fg-prose">SEQ {CUSTODY.headSeq}</Fig>
-                <span className="eyebrow">HEAD</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mx-auto mt-8 max-w-2xl border-t border-chrome-soft pt-6">
-            <Fig className="block break-all text-2xs leading-relaxed text-fg-ghost">{GENESIS}</Fig>
+        <div className="grid content-start gap-px bg-chrome">
+          <Panel label="GENESIS" className="border-0" bodyClassName="p-4" index={1}>
+            <Fig className="block break-all text-2xs leading-relaxed text-fg-prose">{CHAIN.genesisPrevHash}</Fig>
             <p className="caption mt-3 leading-relaxed">
-              Genesis prev_hash, verbatim. Every link after it names its predecessor, so the chain can only be read
-              forward from here and any alteration breaks it at a seq the verifier can name. Append-only is enforced by
-              the database, not by convention: UPDATE, DELETE and TRUNCATE are all refused outright.
+              The genesis row&apos;s prev_hash: 64 zeros, the one link in the chain that names nothing before it. Every
+              row after it is anchored here, so the chain can only be read forward.
             </p>
-          </div>
-        </Panel>
-
-        <Panel label="CHAIN RECORD" className="border-0" bodyClassName="px-4">
-          <EmptyExhibit
-            headline="Chain not loaded"
-            contains="Every event in order: timestamp, transaction, attempt, grid cell, proposed action, guardrail verdict, idempotency key, and both hashes. Guardrail REFUSALS appear here as first-class events, not as flags on some other row."
-            acquire="SELECT seq, prev_hash, hash, payload FROM audit_log ORDER BY seq"
-          />
-        </Panel>
-
-        <Tiered tier="secondary">
-          <Panel label="INSTRUMENTS" className="border-0" bodyClassName="p-px">
-            <div className="grid gap-px bg-chrome sm:grid-cols-2">
-              <div className="flex flex-col gap-2 bg-ink-050 p-4">
-                <span className="text-sm text-fg-prose">Verify</span>
-                <p className="text-2xs leading-relaxed text-fg-label">
-                  Walks the chain from genesis, recomputing every hash, and reports the first break by seq. A travelling
-                  marker follows the walk so the check is visible rather than asserted.
-                </p>
-                <button
-                  type="button"
-                  disabled
-                  className="mt-1 w-fit cursor-not-allowed border border-chrome px-3 py-1.5 text-xs text-fg-ghost"
-                >
-                  <span className="fig">Verify chain</span>
-                </button>
-              </div>
-              <div className="flex flex-col gap-2 bg-ink-050 p-4">
-                <span className="text-sm text-refuse">Tamper</span>
-                <p className="text-2xs leading-relaxed text-fg-label">
-                  Attempts a real UPDATE against audit_log and shows Postgres refuse it, verbatim. The targeted link
-                  flashes, the connector snaps, and the break holds with the failing seq named. Roughly 800ms, once.
-                </p>
-                <button
-                  type="button"
-                  disabled
-                  className="mt-1 w-fit cursor-not-allowed border border-refuse-dim/50 px-3 py-1.5 text-xs text-refuse/50"
-                >
-                  <span className="fig">Attempt tamper</span>
-                </button>
-              </div>
-            </div>
           </Panel>
-        </Tiered>
+
+          <Tiered tier="secondary">
+            <Panel
+              label="RECENT EVENTS"
+              meta={<span className="eyebrow text-fg-ghost">{CHAIN.window.length} OF {CHAIN.links.toLocaleString('en-IN')}</span>}
+              className="border-0"
+              bodyClassName="p-0"
+              index={2}
+            >
+              <Exhibit
+                label="Chain events"
+                figure={
+                  <ProximityRows>
+                    <div className="divide-y divide-chrome-soft">
+                      {recent.slice(0, 8).map((l) => {
+                        const refusal = REFUSAL_EVENTS.has(l.event);
+                        return (
+                          <div key={l.seq} className="flex items-center justify-between gap-3 px-4 py-2">
+                            <span className="flex items-baseline gap-2.5">
+                              <Fig className="text-2xs text-fg-ghost">{l.seq}</Fig>
+                              <span className={cn('eyebrow', refusal ? 'text-refuse' : 'text-fg-label')}>
+                                {refusal ? 'REFUSAL' : l.event}
+                              </span>
+                            </span>
+                            <Fig className="text-2xs text-fg-prose">{shortHash(l.hash, 8)}…</Fig>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ProximityRows>
+                }
+              >
+                <div className="divide-y divide-chrome-soft">
+                  {recent.map((l) => {
+                    const refusal = REFUSAL_EVENTS.has(l.event);
+                    return (
+                      <div key={l.seq} className="grid grid-cols-[4rem_9rem_1fr] items-baseline gap-3 py-2.5">
+                        <Fig className="text-2xs text-fg-ghost">seq {l.seq}</Fig>
+                        <span className={cn('eyebrow', refusal ? 'text-refuse' : 'text-fg-label')}>
+                          {refusal ? 'REFUSAL' : l.event}
+                        </span>
+                        <span className="min-w-0">
+                          <Fig className="block truncate text-2xs text-fg-data">{l.hash}</Fig>
+                          <Fig className="block truncate text-2xs text-fg-ghost">prev {l.prevHash}</Fig>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="caption mt-4 leading-relaxed">
+                  Every row&apos;s prev_hash is the previous row&apos;s hash, which is what makes the sequence a chain
+                  rather than a list. Guardrail vetoes are stored here as their own events, so a refusal to act is part
+                  of the record on the same footing as an action taken.
+                </p>
+              </Exhibit>
+            </Panel>
+          </Tiered>
+
+          <Tiered tier="tertiary">
+            <Panel label="ENFORCEMENT" className="border-0" bodyClassName="p-4" index={3}>
+              <p className="caption leading-relaxed">
+                A <Fig className="text-fg-prose">BEFORE UPDATE OR DELETE</Fig> row trigger and a{' '}
+                <Fig className="text-fg-prose">BEFORE TRUNCATE</Fig> statement trigger both raise{' '}
+                <Fig className="text-fg-prose">restrict_violation</Fig>. Row-level triggers do not see TRUNCATE, hence
+                the second one. Append-only is therefore a guarantee of the database, not a property of the code that
+                writes to it.
+              </p>
+            </Panel>
+          </Tiered>
+        </div>
       </div>
     </div>
   );

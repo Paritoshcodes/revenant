@@ -22,7 +22,9 @@ export interface HeroFigureProps {
   /** The rows behind the figure, shown when it is expanded. */
   children: ReactNode;
   label: string;
-  tone?: 'data' | 'accent';
+  /** `refuse` is the steel treatment: a refusal is correct behaviour,
+   * so it is neither the accent (reserved) nor red (reserved). */
+  tone?: 'data' | 'accent' | 'refuse';
   below?: ReactNode;
 }
 
@@ -49,7 +51,7 @@ export function HeroFigure({
           <Fig
             className={cn(
               'block text-hero font-medium leading-none',
-              tone === 'accent' ? 'text-accent' : 'text-fg-data',
+              tone === 'accent' ? 'text-accent' : tone === 'refuse' ? 'text-refuse' : 'text-fg-data',
             )}
             style={{ letterSpacing: '-0.045em' }}
           >

@@ -1,0 +1,1260 @@
+{
+  "generated": "2026-09-02",
+  "source": "apps/gateway/scripts/export-dashboard-fixtures.mts",
+  "transactions": [
+    {
+      "id": "txn_batch_mtibdbso_0",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "terminal",
+      "attempts": 0,
+      "captures": 0,
+      "vetoes": 1
+    },
+    {
+      "id": "txn_batch_mtibdbso_1",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_2",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "recovered",
+      "attempts": 2,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_3",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "recovered",
+      "attempts": 3,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_4",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_5",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "abandoned",
+      "attempts": 3,
+      "captures": 0,
+      "vetoes": 1
+    },
+    {
+      "id": "txn_batch_mtibdbso_6",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_7",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "abandoned",
+      "attempts": 3,
+      "captures": 0,
+      "vetoes": 1
+    },
+    {
+      "id": "txn_batch_mtibdbso_8",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_9",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_10",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_11",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_12",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_13",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_14",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_15",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "recovered",
+      "attempts": 3,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_16",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "recovered",
+      "attempts": 2,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_17",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "abandoned",
+      "attempts": 3,
+      "captures": 0,
+      "vetoes": 1
+    },
+    {
+      "id": "txn_batch_mtibdbso_18",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_19",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_20",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_21",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_22",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_23",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_24",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_25",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "recovered",
+      "attempts": 2,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_26",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "open",
+      "attempts": 1,
+      "captures": 0,
+      "vetoes": 1
+    },
+    {
+      "id": "txn_batch_mtibdbso_27",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "recovered",
+      "attempts": 3,
+      "captures": 1,
+      "vetoes": 0
+    },
+    {
+      "id": "txn_batch_mtibdbso_28",
+      "amount_paise": "49900",
+      "arm": "control",
+      "status": "abandoned",
+      "attempts": 3,
+      "captures": 0,
+      "vetoes": 1
+    },
+    {
+      "id": "txn_batch_mtibdbso_29",
+      "amount_paise": "49900",
+      "arm": "treatment",
+      "status": "recovered",
+      "attempts": 1,
+      "captures": 1,
+      "vetoes": 0
+    }
+  ],
+  "decisions": [
+    {
+      "transaction_id": "txn_batch_mtibdbso_0",
+      "attempt_number": 1,
+      "grid_cell": "bank/authentication",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0",
+      "guardrail_verdict": "veto",
+      "guardrail_reason": "terminal_grid_cell: grid cell bank/authentication is not on the policy grid",
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_1",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_10",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_11",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_12",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_13",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_14",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_15",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_15",
+      "attempt_number": 2,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_15",
+      "attempt_number": 3,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_16",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_16",
+      "attempt_number": 2,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_17",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_17",
+      "attempt_number": 2,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_17",
+      "attempt_number": 3,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_17",
+      "attempt_number": 4,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "veto",
+      "guardrail_reason": "max_attempts: attempt 4 exceeds the maximum of 3 per transaction",
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_18",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_19",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_2",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_2",
+      "attempt_number": 2,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_20",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_21",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_22",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_23",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_24",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_25",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_25",
+      "attempt_number": 2,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_26",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_26",
+      "attempt_number": 2,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "veto",
+      "guardrail_reason": "minimum_backoff: only 1ms since the last attempt, 60000ms required before attempt 2",
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_27",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_27",
+      "attempt_number": 2,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_27",
+      "attempt_number": 3,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_28",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_28",
+      "attempt_number": 2,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_28",
+      "attempt_number": 3,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_28",
+      "attempt_number": 4,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "veto",
+      "guardrail_reason": "max_attempts: attempt 4 exceeds the maximum of 3 per transaction",
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_29",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_3",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_3",
+      "attempt_number": 2,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_3",
+      "attempt_number": 3,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_4",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_5",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_5",
+      "attempt_number": 2,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_5",
+      "attempt_number": 3,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_5",
+      "attempt_number": 4,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "veto",
+      "guardrail_reason": "max_attempts: attempt 4 exceeds the maximum of 3 per transaction",
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_6",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_7",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_7",
+      "attempt_number": 2,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_7",
+      "attempt_number": 3,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_7",
+      "attempt_number": 4,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "veto",
+      "guardrail_reason": "max_attempts: attempt 4 exceeds the maximum of 3 per transaction",
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_8",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_9",
+      "attempt_number": 1,
+      "grid_cell": "gateway/payment_authorization",
+      "proposed_action": "retry_with_backoff",
+      "recovery_probability": "0.5",
+      "guardrail_verdict": "allow",
+      "guardrail_reason": null,
+      "diagnosis": null
+    }
+  ],
+  "attempts": [
+    {
+      "transaction_id": "txn_batch_mtibdbso_1",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgJi90kSnz5CU",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "922050"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_10",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgNKeHClVyk7E",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "265567"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_11",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgNbbIRx2TBrX",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "748658"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_12",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgNrHJi4E5vBn",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "536740"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_13",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgONP9Z0KQhNl",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "452636"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_14",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgO7MsqdArB9h",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "966463"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_15",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgOh4U3AYk0W3",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_15",
+      "attempt_number": 2,
+      "rzp_payment_id": "pay_TWgOtxitNltJzj",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_15",
+      "attempt_number": 3,
+      "rzp_payment_id": "pay_TWgPXSRlU441WP",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "908924"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_16",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgP7TnekH8qNQ",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_16",
+      "attempt_number": 2,
+      "rzp_payment_id": "pay_TWgQ5bxLtGPxDf",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "131910"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_17",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgPKNGckCeDkB",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_17",
+      "attempt_number": 2,
+      "rzp_payment_id": "pay_TWgQPbG6n73fqa",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_17",
+      "attempt_number": 3,
+      "rzp_payment_id": "pay_TWgQd1n4k7cR9b",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_18",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgPpTPtx3QEYH",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "199838"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_19",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgQvf8gfvnY6E",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "861935"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_2",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgJylXJJGqZcw",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_2",
+      "attempt_number": 2,
+      "rzp_payment_id": "pay_TWgKPsby1hmSs2",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "212162"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_20",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgRCgMOGolHqf",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "427476"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_21",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgRT1rEetfZhN",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "341178"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_22",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgRjoM4jPU4gX",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "412733"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_23",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgSpGlh2GdnR5",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "138151"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_24",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgSJxampPD4Mz",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "939949"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_25",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgSb3TN1dmUJN",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_25",
+      "attempt_number": 2,
+      "rzp_payment_id": "pay_TWgTJg6Z08ko4w",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "214890"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_26",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgT6utELEZlUD",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_27",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgTbMBnmbX95b",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_27",
+      "attempt_number": 2,
+      "rzp_payment_id": "pay_TWgTnyfRWv6h8v",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_27",
+      "attempt_number": 3,
+      "rzp_payment_id": "pay_TWgUU1JOFbuLKD",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "499743"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_28",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgU0vzXzCGgzb",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_28",
+      "attempt_number": 2,
+      "rzp_payment_id": "pay_TWgUlZnSb7Xks9",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_28",
+      "attempt_number": 3,
+      "rzp_payment_id": "pay_TWgUynx9Yp7IVK",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_29",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgUDtnIJe0Kw2",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "896093"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_3",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgJVSEhuTeZ54",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_3",
+      "attempt_number": 2,
+      "rzp_payment_id": "pay_TWgKDAXUuuNhXv",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_3",
+      "attempt_number": 3,
+      "rzp_payment_id": "pay_TWgKfne4uvKG5W",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "991092"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_4",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgKwtcP0VbblM",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "328160"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_5",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgLD5tK14ENIB",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_5",
+      "attempt_number": 2,
+      "rzp_payment_id": "pay_TWgLfyLIREVx6h",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_5",
+      "attempt_number": 3,
+      "rzp_payment_id": "pay_TWgMQDYysCm61H",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_6",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgLPxHXhTMuFN",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "492078"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_7",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgLtYqVs8fbSB",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_7",
+      "attempt_number": 2,
+      "rzp_payment_id": "pay_TWgMe6X0CleB7X",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_7",
+      "attempt_number": 3,
+      "rzp_payment_id": "pay_TWgN6tuhjdqijT",
+      "outcome": "failed",
+      "error_reason": "payment_failed",
+      "error_source": "gateway",
+      "error_step": "payment_authorization",
+      "auth_code": null
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_8",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgM78zpbMGxfC",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "280967"
+    },
+    {
+      "transaction_id": "txn_batch_mtibdbso_9",
+      "attempt_number": 1,
+      "rzp_payment_id": "pay_TWgMqtXlAxqtlR",
+      "outcome": "captured",
+      "error_reason": null,
+      "error_source": null,
+      "error_step": null,
+      "auth_code": "196141"
+    }
+  ]
+}
