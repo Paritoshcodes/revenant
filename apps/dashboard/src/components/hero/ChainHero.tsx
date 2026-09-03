@@ -30,7 +30,7 @@ import { cn } from '../../lib/cn';
 import { useReducedMotion } from '../../lib/motion';
 import { Fig } from '../primitives/Fig';
 
-const H = 132;
+const H = 108;
 const LINK_Y = 58;
 const NODE = 7;
 
@@ -95,7 +95,7 @@ export function ChainHero(): JSX.Element {
   const breakIndex = links.length - 1;
 
   return (
-    <div className="flex flex-col">
+    <div className="relative flex flex-col">
       {/* ---- The hero figure ------------------------------------------ */}
       <div className="flex flex-col items-center">
         <Fig className="block text-hero font-medium leading-none text-fg-data" style={{ letterSpacing: '-0.045em' }}>
@@ -107,7 +107,7 @@ export function ChainHero(): JSX.Element {
       {/* ---- The chain ------------------------------------------------ */}
       <div
         ref={track}
-        className="relative mt-10 cursor-crosshair"
+        className="relative mt-8 cursor-crosshair"
         style={{ height: H }}
         onPointerMove={onMove}
         onPointerLeave={() => setCursor(null)}
@@ -226,10 +226,10 @@ export function ChainHero(): JSX.Element {
 
         {/* The break, held at the named seq until dismissed. */}
         {mode === 'broken' && (
-          <div
-            className="absolute z-20 -translate-x-1/2 whitespace-nowrap"
-            style={{ left: `${at(breakIndex)}%`, top: LINK_Y - 30 }}
-          >
+          // The break is at the head, i.e. 100%, so a centred badge would
+          // hang half its width past the track and push the page into
+          // horizontal overflow. Anchored to the right edge instead.
+          <div className="absolute right-0 z-20 whitespace-nowrap" style={{ top: LINK_Y - 30 }}>
             <span className="eyebrow border border-fault px-1.5 py-1 text-fault">
               BROKEN AT SEQ {CHAIN.refusal.seq}
             </span>
@@ -238,7 +238,7 @@ export function ChainHero(): JSX.Element {
       </div>
 
       {/* ---- Controls -------------------------------------------------- */}
-      <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+      <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
         <button
           type="button"
           onClick={verify}
@@ -264,10 +264,15 @@ export function ChainHero(): JSX.Element {
         )}
       </div>
 
-      {/* ---- Result ---------------------------------------------------- */}
-      <div className="mt-8 min-h-[7.5rem]">
+      {/* ---- Result ----------------------------------------------------
+          The verbatim error is the proof; everything else here is
+          staging. It is rendered as an OVERLAY anchored over the chain
+          rather than as a block below it, so the snap and the refusal
+          are guaranteed to be in the same viewport no matter what sits
+          above them or how short the window is. */}
+      <div className="relative mt-7 min-h-[4.5rem]">
         {mode === 'verified' && (
-          <div className="resolve-in flex flex-col items-center gap-2 text-center">
+          <div className="resolve-in flex flex-col items-center gap-1.5 text-center">
             <span className="eyebrow">RESULT</span>
             <span className="text-verdict font-semibold tracking-[-0.02em] text-fg-data">Chain intact</span>
             <span className="caption max-w-lg">
@@ -275,44 +280,6 @@ export function ChainHero(): JSX.Element {
               <Fig className="text-fg-prose">{CHAIN.headSeq}</Fig>, hash{' '}
               <Fig className="text-fg-prose">{shortHash(CHAIN.headHash, 24)}…</Fig> — no break found.
             </span>
-          </div>
-        )}
-
-        {mode === 'broken' && (
-          <div className="resolve-in mx-auto max-w-3xl">
-            <div className="flex flex-col items-center gap-2 text-center">
-              <span className="eyebrow text-fault">POSTGRES REFUSED THE WRITE</span>
-              <span className="text-verdict font-semibold tracking-[-0.02em] text-fg-data">Record cannot be altered</span>
-            </div>
-            <div className="mt-5 border border-fault/50 bg-fault-wash p-4">
-              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                <span className="eyebrow">ATTEMPTED</span>
-                <Fig className="text-2xs text-fg-prose">{CHAIN.refusal.sql}</Fig>
-              </div>
-              <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                <span className="eyebrow text-fault">{CHAIN.refusal.severity}</span>
-                <Fig className="text-sm text-fault">{CHAIN.refusal.message}</Fig>
-              </div>
-              <div className="mt-3 flex flex-wrap items-baseline gap-x-5 gap-y-1 border-t border-fault/30 pt-3">
-                {[
-                  ['SQLSTATE', CHAIN.refusal.code],
-                  ['RAISED IN', CHAIN.refusal.where],
-                  ['CAPTURED', CHAIN.refusal.capturedAt],
-                ].map(([k, v]) => (
-                  <span key={k} className="flex items-baseline gap-1.5">
-                    <span className="eyebrow">{k}</span>
-                    <Fig className="text-2xs text-fg-prose">{v}</Fig>
-                  </span>
-                ))}
-              </div>
-            </div>
-            <p className="caption mt-4 leading-relaxed">
-              Recorded, not simulated: that message, SQLSTATE and function name came back from the real database when
-              this exact UPDATE was run against the real table on{' '}
-              <Fig className="text-fg-prose">{CHAIN.refusal.capturedAt}</Fig>. The animation is a replay; the refusal is
-              not. Append-only is a database guarantee here, not a convention — UPDATE, DELETE and TRUNCATE are all
-              rejected by triggers, so a broken chain can only ever come from a broken writer.
-            </p>
           </div>
         )}
 
@@ -324,6 +291,55 @@ export function ChainHero(): JSX.Element {
           </p>
         )}
       </div>
+
+      {mode === 'broken' && (
+        <div className="chain-break-overlay absolute inset-x-0 bottom-0 z-30">
+          <div className="border border-fault bg-ink-000 shadow-[0_-12px_40px_rgba(0,0,0,0.75)]">
+            <div className="flex items-baseline justify-between gap-4 border-b border-fault/40 bg-fault-wash px-4 py-2.5">
+              <span className="eyebrow text-fault">POSTGRES REFUSED THE WRITE · SEQ {CHAIN.refusal.seq}</span>
+              <button
+                type="button"
+                onClick={() => setMode('idle')}
+                className="eyebrow text-fg-label transition-colors duration-fast hover:text-fg-data"
+              >
+                DISMISS
+              </button>
+            </div>
+
+            <div className="px-4 py-3.5">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="eyebrow shrink-0">ATTEMPTED</span>
+                <Fig className="text-2xs text-fg-prose">{CHAIN.refusal.sql}</Fig>
+              </div>
+
+              {/* The line that is the entire proof. */}
+              <div className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="eyebrow shrink-0 text-fault">{CHAIN.refusal.severity}</span>
+                <Fig className="text-md font-medium text-fault">{CHAIN.refusal.message}</Fig>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-baseline gap-x-5 gap-y-1 border-t border-fault/25 pt-2.5">
+                {[
+                  ['SQLSTATE', CHAIN.refusal.code],
+                  ['RAISED IN', CHAIN.refusal.where],
+                  ['CAPTURED', CHAIN.refusal.capturedAt],
+                ].map(([k, v]) => (
+                  <span key={k} className="flex items-baseline gap-1.5">
+                    <span className="eyebrow">{k}</span>
+                    <Fig className="text-2xs text-fg-prose">{v}</Fig>
+                  </span>
+                ))}
+              </div>
+
+              <p className="caption mt-2.5 leading-relaxed">
+                Recorded, not simulated: that message, SQLSTATE and function name came back from the real database when
+                this exact UPDATE ran against the real table. The animation is a replay; the refusal is not.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

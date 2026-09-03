@@ -100,7 +100,7 @@ export function BatchScreen(): JSX.Element {
         <p className="caption max-w-4xl leading-relaxed text-refuse">{LAYER1_CAVEAT}</p>
       </div>
 
-      <div className="grid gap-px bg-chrome p-px xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
+      <div className="grid min-w-0 gap-px bg-chrome p-px xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
         <Panel
           label="EXHIBIT / OBSERVED RECOVERED VALUE"
           meta={
@@ -204,7 +204,7 @@ export function BatchScreen(): JSX.Element {
       </div>
 
       {/* ---- The record --------------------------------------------- */}
-      <div className="grid gap-px bg-chrome px-px pb-px">
+      <div className="grid min-w-0 gap-px bg-chrome px-px pb-px">
         <Panel
           label="TRANSACTION RECORD"
           meta={

@@ -76,7 +76,7 @@ export function DecisionsScreen(): JSX.Element {
         right={<ClassChip cls="RECORD" />}
       />
 
-      <div className="grid gap-px bg-chrome p-px xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
+      <div className="grid min-w-0 gap-px bg-chrome p-px xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
         <Panel
           label="EXHIBIT / DECISIONS ON THE RECORD"
           meta={
@@ -284,7 +284,7 @@ export function DecisionsScreen(): JSX.Element {
       </div>
 
       {/* ---- The record --------------------------------------------- */}
-      <div className="grid gap-px bg-chrome px-px pb-px">
+      <div className="grid min-w-0 gap-px bg-chrome px-px pb-px">
         <Panel
           label="DECISION RECORD"
           meta={

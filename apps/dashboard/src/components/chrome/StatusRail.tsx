@@ -52,11 +52,8 @@ export function StatusRail({ screen }: { screen: ScreenId }): JSX.Element {
         <ClassChip cls={meta.cls} />
       </Cell>
 
-      <Cell label="SEED" note={meta.seed === null ? 'NO RUN LOADED' : 'REPRODUCIBLE'}>
-        <Scramble
-          value={meta.seed === null ? '----------' : String(meta.seed)}
-          className={meta.seed === null ? 'text-fg-ghost' : 'text-fg-data'}
-        />
+      <Cell label={meta.railLabel} note={meta.railLabel === 'HEAD SEQ' ? 'APPEND ONLY' : 'REPRODUCIBLE'}>
+        <Scramble value={meta.railValue} className="text-fg-data" />
       </Cell>
 
       <Cell label="REFERENCE" note={`FROZEN ${REFERENCE.committed.slice(5)}`} className="hidden md:flex">

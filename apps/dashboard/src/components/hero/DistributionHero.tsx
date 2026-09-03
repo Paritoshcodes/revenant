@@ -26,9 +26,9 @@ import { cn } from '../../lib/cn';
 import { useHighlight } from '../../lib/highlight';
 import { Fig } from '../primitives/Fig';
 
-const H = 210;
+const H = 186;
 const PLOT_TOP = 34;
-const AXIS_Y = 178;
+const AXIS_Y = 156;
 const BRACKET_Y = 20;
 
 export interface DistributionHeroProps {
@@ -171,7 +171,7 @@ export function DistributionHero({
       {/* ---- The distribution the interval was read from ----------- */}
       <div
         ref={plot}
-        className="relative mt-9 cursor-crosshair"
+        className="relative mt-7 cursor-crosshair"
         style={{ height: H }}
         onPointerMove={onMove}
         onPointerLeave={() => setScrub(null)}

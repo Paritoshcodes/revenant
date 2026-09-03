@@ -428,6 +428,50 @@ body {
   animation-delay: calc(var(--row-index, 0) * 22ms);
 }
 
+/* THE TAMPER SET PIECE. ~800ms, once, no loop, dismissible.
+ *
+ * `chain-snap` did not exist in this file until now: it survived in
+ * ChainHero's markup after tokens.css was rewritten for the identity
+ * pass, so the connector was recolouring on tamper but never actually
+ * snapping. Found by grepping for the class while wiring the overlay.
+ * The connector recoils from its own left end — scaleX from the origin
+ * the link is anchored at — and drops opacity, so the break reads as a
+ * thing coming apart rather than a colour change. */
+@keyframes chain-snap {
+  0% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  35% {
+    transform: scaleX(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(0.55);
+    opacity: 0.3;
+  }
+}
+.chain-snap {
+  animation: chain-snap var(--duration-piece) var(--ease-out-expo) both;
+}
+
+/* The refusal overlay arrives with the snap, rising from the break it
+   belongs to. transform + opacity only; it never reflows the chain. */
+@keyframes break-overlay {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+.chain-break-overlay {
+  animation: break-overlay var(--duration-slow) var(--ease-out-expo) both;
+  animation-delay: 200ms;
+}
+
 /* ====================================================================
    REDUCED MOTION — instant, still fully functional
    ==================================================================== */

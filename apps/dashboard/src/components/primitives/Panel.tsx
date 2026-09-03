@@ -27,7 +27,7 @@ export function Panel({
 }): JSX.Element {
   return (
     <section
-      className={cn('panel-wipe raised border border-chrome bg-ink-050', className)}
+      className={cn('panel-wipe raised min-w-0 border border-chrome bg-ink-050', className)}
       style={{ '--panel-index': index } as React.CSSProperties}
     >
       <header className="flex h-8 items-center justify-between gap-3 border-b border-chrome-soft bg-ink-100 px-3">

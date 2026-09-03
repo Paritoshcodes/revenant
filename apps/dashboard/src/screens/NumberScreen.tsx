@@ -20,6 +20,7 @@
  */
 import { DistributionHero } from '../components/hero/DistributionHero';
 import { DualInterval } from '../components/hero/DualInterval';
+import { MiniDisagreement } from '../components/hero/MiniDisagreement';
 import { ClassChip } from '../components/primitives/ClassChip';
 import { Exhibit } from '../components/primitives/Exhibit';
 import { Fig } from '../components/primitives/Fig';
@@ -91,7 +92,7 @@ function NumberScreenInner(): JSX.Element {
             </span>
           }
           className="border-0"
-          bodyClassName="px-6 pb-8 pt-9 sm:px-12"
+          bodyClassName="px-6 pb-7 pt-8 sm:px-12"
           index={0}
         >
           <MaskRise index={0}>
@@ -118,12 +119,28 @@ function NumberScreenInner(): JSX.Element {
           {/* The verdict, on the same optical axis as the figure above:
               both are centred in this one column, not to different
               containers. */}
-          <MaskRise index={1} className="mt-12 flex flex-col items-center gap-2 text-center">
-            <span className="eyebrow">VERDICT</span>
-            <span className="text-verdict font-semibold tracking-[-0.02em] text-fg-data">
-              {VERDICT_TEXT[X.verdict]}
-            </span>
-            <span className="caption max-w-lg">Because {VERDICT_BASIS[X.verdict]}.</span>
+          <MaskRise
+            index={1}
+            className="mt-9 flex flex-col items-center gap-6 border-t border-chrome-soft pt-7 lg:flex-row lg:items-center lg:justify-center lg:gap-10"
+          >
+            <div className="flex shrink-0 flex-col items-center gap-2 text-center lg:items-start lg:text-left">
+              <span className="eyebrow">VERDICT</span>
+              <span className="text-verdict font-semibold tracking-[-0.02em] text-fg-data">
+                {VERDICT_TEXT[X.verdict]}
+              </span>
+              <span className="caption max-w-xs">Because {VERDICT_BASIS[X.verdict]}.</span>
+            </div>
+
+            {/* The disagreement, beside the verdict rather than below the
+                fold. It is the reason the verdict says what it says, so a
+                first-viewport viewer has to be able to see it. */}
+            <MiniDisagreement
+              className="w-full max-w-xl lg:border-l lg:border-chrome-soft lg:pl-10"
+              rows={[
+                { label: 'RATE, PP', point: X.rate.point, lo: X.rate.lo, hi: X.rate.hi, primary: false },
+                { label: 'VALUE, PAISE', point: X.value.point, lo: X.value.lo, hi: X.value.hi, primary: true },
+              ]}
+            />
           </MaskRise>
         </Panel>
 
